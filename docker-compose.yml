@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: ai_kb_redis
+    ports:
+      - "6380:6379" # Mapping internal 6379 to host 6380 to match .env
+    volumes:
+      - redis_data:/data
+    restart: always
+
+  api:
+    build: .
+    container_name: ai_kb_api
+    env_file: .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - LOG_FILE_PATH=/app/logs/api.log
+      - CHROMA_DB_PATH=/app/chroma_db
+      - HF_HOME=/app/models_cache
+      - PYTHONPATH=/app
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./logs:/app/logs
+      - ./chroma_db:/app/chroma_db
+      - ./models_cache:/app/models_cache
+      - ./uploads:/app/uploads
+      - ./media:/app/media
+    depends_on:
+      - redis
+    command: python -m app.api.main
+    restart: always
+
+  worker:
+    build: .
+    container_name: ai_kb_worker
+    env_file: .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - LOG_FILE_PATH=/app/logs/worker.log
+      - CHROMA_DB_PATH=/app/chroma_db
+      - HF_HOME=/app/models_cache
+      - PYTHONPATH=/app
+    volumes:
+      - ./logs:/app/logs
+      - ./chroma_db:/app/chroma_db
+      - ./models_cache:/app/models_cache
+      - ./uploads:/app/uploads
+    depends_on:
+      - redis
+    # Using solo pool for Windows-like stability in Celery (or standard for Linux Docker)
+    command: celery -A app.services.tasks worker --loglevel=info -P solo
+    restart: always
+
+  mcp:
+    build: .
+    container_name: ai_kb_mcp
+    env_file: .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - LOG_FILE_PATH=/app/logs/mcp.log
+      - CHROMA_DB_PATH=/app/chroma_db
+      - HF_HOME=/app/models_cache
+      - PYTHONPATH=/app
+    ports:
+      - "9382:9382"
+    volumes:
+      - ./logs:/app/logs
+      - ./chroma_db:/app/chroma_db
+    depends_on:
+      - redis
+    command: python -m app.mcp.mcp_server --transport sse --port 9382
+    restart: always
+
+volumes:
+  redis_data:

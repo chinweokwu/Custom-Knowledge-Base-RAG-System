@@ -1,0 +1,1 @@
+COOPERATIVE PROTOCOLS: The 'Cortex-X' protocol (used by Nebula) is strictly limited to a maximum latency of 15ms per hop to ensure real-time stability.

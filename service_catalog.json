@@ -1,0 +1,46 @@
+{
+    "tools": [
+        {
+            "name": "get_rca_report",
+            "description": "Fetches Root Cause Analysis (RCA) data for a specific site or incident from the company's internal API. Use this when you have an incident ID or a site name.",
+            "endpoint": "https://api.internal.company.com/v1/incidents/rca",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "incident_id": {
+                        "type": "string",
+                        "description": "The unique ID of the incident."
+                    },
+                    "site_name": {
+                        "type": "string",
+                        "description": "The name of the site (e.g., London, Tokyo)."
+                    }
+                },
+                "required": [
+                    "incident_id"
+                ]
+            }
+        },
+        {
+            "name": "get_pof_report",
+            "description": "Fetches Point of Failure (POF) diagnostics for a component. Use this to identify why a specific service is failing.",
+            "endpoint": "https://api.internal.company.com/v1/debug/pof",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "component_id": {
+                        "type": "string",
+                        "description": "The unique ID of the component failing."
+                    },
+                    "region": {
+                        "type": "string",
+                        "description": "The deployment region (e.g., us-east-1)."
+                    }
+                },
+                "required": [
+                    "component_id"
+                ]
+            }
+        }
+    ]
+}

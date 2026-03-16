@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Knowledge Base | Admin Dash</title>
+    <link rel="stylesheet" href="styles.css">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Inter:wght@300;400;600&display=swap"
+        rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+
+<body class="dark-mode">
+    <div class="bg-ambient"></div>
+    <div class="glass-container">
+        <header>
+            <div class="logo">
+                <span class="pulsar"></span>
+                <h1>AI KNOWLEDGE<span> BEYOND</span></h1>
+            </div>
+            <nav class="tabs">
+                <button class="tab-btn active" data-tab="upload">Ingestion</button>
+                <button class="tab-btn" data-tab="query">Neural Query</button>
+                <button class="tab-btn" data-tab="explorer">Memory Explorer</button>
+                <button class="tab-btn" data-tab="system">System Health</button>
+            </nav>
+            <div class="status-badge" id="system-status-summary">
+                <span class="dot yellow"></span> Connecting...
+            </div>
+        </header>
+
+        <main>
+            <!-- Ingestion Tab -->
+            <div id="upload-tab" class="tab-content active">
+                <section class="upload-section">
+                    <div class="section-header">
+                        <h2>Knowledge Ingestion</h2>
+                        <p>Transmit documents directly into the neural memory.</p>
+                    </div>
+
+                    <div id="drop-zone" class="drop-zone">
+                        <div class="drop-zone-content">
+                            <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+                            </svg>
+                            <p>Drag & Drop files here or <span>browse</span></p>
+                            <input type="file" id="file-input" hidden multiple>
+                        </div>
+                    </div>
+
+                    <div class="options-bar">
+                        <label class="toggle">
+                            <input type="checkbox" id="heavy-parsing-toggle">
+                            <span class="slider"></span>
+                            <span class="label-text">Enhanced Layout Extraction (Heavy PDF)</span>
+                        </label>
+                    </div>
+                </section>
+
+                <div class="activity-section">
+                    <h3>Ingestion Pulse</h3>
+                    <div id="pulse-list" class="pulse-list">
+                        <!-- Progress items will appear here -->
+                        <div class="empty-state">No active transmissions.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Neural Query Tab -->
+            <div id="query-tab" class="tab-content">
+                <section class="query-section">
+                    <div class="section-header">
+                        <h2>Neural Search & Readout</h2>
+                        <p>Ask a question to see exactly how your AI retrieves and synthesizes truth.</p>
+                    </div>
+
+                    <div class="search-container">
+                        <input type="text" id="query-input"
+                            placeholder="Type your neural query here (e.g., What are our core mission values?)...">
+                        <button id="search-btn">Retrieve & Synthesize</button>
+                    </div>
+
+                    <div class="query-results-grid">
+                        <div class="result-column">
+                            <h3>Retrieved Knowledge (X-Algo)</h3>
+                            <div id="retrieved-data" class="results-list">
+                                <div class="empty-state">Knowledge fragments will appear here.</div>
+                            </div>
+                        </div>
+                        <div class="result-column">
+                            <div class="column-header">
+                                <h3>Final Readout (AI Synthesis)</h3>
+                                <button id="download-report-btn" class="mini-btn" disabled>Download Report</button>
+                            </div>
+                            <div id="ai-response" class="response-box">
+                                <div class="empty-state">The AI's final synthesis will appear here.</div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Explorer Tab -->
+            <div id="explorer-tab" class="tab-content">
+                <section class="explorer-section">
+                    <div class="section-header">
+                        <h2>Memory Explorer</h2>
+                        <p>Latest document fragments stored in the Vector Database.</p>
+                    </div>
+                    <div id="memory-list" class="memory-list">
+                        <!-- Memories will be listed here -->
+                        <div class="empty-state">No memories found in neural core.</div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- System Tab -->
+            <div id="system-tab" class="tab-content">
+                <section class="system-section">
+                    <div class="section-header">
+                        <h2>System Health</h2>
+                        <p>Monitoring the heartbeat of core AI services.</p>
+                    </div>
+                    <div class="health-grid">
+                        <div class="health-card" data-service="database">
+                            <span class="service-icon">🗄️</span>
+                            <div class="service-info">
+                                <h3>ChromaDB (Local)</h3>
+                                <p id="database-health">Checking...</p>
+                            </div>
+                            <span class="status-indicator"></span>
+                        </div>
+                        <div class="health-card" data-service="redis">
+                            <span class="service-icon">📮</span>
+                            <div class="service-info">
+                                <h3>Redis Queue (Broker)</h3>
+                                <p id="redis-health">Checking...</p>
+                            </div>
+                            <span class="status-indicator"></span>
+                        </div>
+                        <div class="health-card" data-service="graph_rag">
+                            <span class="service-icon">🕸️</span>
+                            <div class="service-info">
+                                <h3>Knowledge Graph</h3>
+                                <p id="graph_rag-health">Checking...</p>
+                            </div>
+                            <span class="status-indicator"></span>
+                        </div>
+                        <div class="health-card" data-service="groq_cloud">
+                            <span class="service-icon">⚡</span>
+                            <div class="service-info">
+                                <h3>Groq Cloud (70B)</h3>
+                                <p id="groq_cloud-health">Checking...</p>
+                            </div>
+                            <span class="status-indicator"></span>
+                        </div>
+                        <div class="health-card" data-service="storage">
+                            <span class="service-icon">💿</span>
+                            <div class="service-info">
+                                <h3>Knowledge Base</h3>
+                                <p id="storage-health">0 Fragments</p>
+                            </div>
+                            <span class="status-indicator online"></span>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+
+        <footer>
+            <div class="mcp-sync">
+                <span class="icon">🔌</span> MCP Protocol: Active (SSE)
+            </div>
+            <div class="version">v2.0.0-PRO</div>
+        </footer>
+    </div>
+
+    <script src="admin.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,36 @@
+# Sensitive Configuration
+.env
+*.env
+
+# Application Logs
+*.log
+app.log
+logs/
+test_final.log
+test_output.txt
+audit_results.txt
+
+# Large Data & Models
+models_cache/
+chroma_db/
+DATA/
+MQueue/
+graph_store.pkl
+
+# User Uploads & Media
+uploads/
+media/
+
+# Python Environment & Cache
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+
+# System / IDE
+.DS_Store
+.idea/
+.vscode/

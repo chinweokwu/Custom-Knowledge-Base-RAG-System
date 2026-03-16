@@ -1,0 +1,1 @@
+SYSTEM DESIGN: Project 'Nebula' is an advanced neural gateway that uses the 'Cortex-X' protocol for inter-module synchronization.

@@ -1,0 +1,43 @@
+Technical Onboarding: The Local RAG Knowledge Base
+This guide explains the architecture and operational flow of the 100% Local AI Knowledge Base. It is designed to help a Lead Engineer or Developer understand how we've moved from cloud dependencies to an autonomous, high-precision retrieval system.
+
+1. What is RAG? (The "Open Book" Analogy)
+Traditional LLMs are like a student who has read the whole internet but has a "frozen" memory. They don't know about your private company files.
+
+Retrieval-Augmented Generation (RAG) turns the AI into a student with an open book.
+
+Search: When you ask a question, the system searches your private documents first.
+Context: It finds the most relevant "pages" (fragments).
+Generation: It hands those pages to the AI (Llama-3) and asks: "Based ONLY on these pages, answer the user."
+2. Ingestion: How we "Read" Documents
+We process diverse file types to ensure the AI "sees" everything correctly.
+
+PDF/Text: We use intelligent chunking to break documents into segments of ~500 words, preserving paragraph context.
+Excel/Structured Data: We use specialized loaders that preserve row/column relationships, turning spreadsheets into searchable "technical fact sheets."
+Async Batching (Redis + Celery):
+Processing 1,000s of lines takes time. To keep the UI fast, we offload this work.
+Redis: Acts as the "Waiting Room" for tasks.
+Celery: Acts as the "Worker" that runs in the background. It processes files in batches, generates vectors, and stores them in the database without blocking the user.
+3. The AI Core: Dual-Engine Architecture
+We don't rely on a single model. We use a Dual-Engine approach for maximum precision.
+
+Engine A: The 1920-D Neural Fusion (ModelX5)
+Instead of one search model, we use an Ensemble of 5 specialized models (MiniLM-L6, MSMarco, etc.).
+
+They generate a massive 1,920-dimension vector (mathematical fingerprint) for every fragment.
+This ensemble is specialized for Technical Logs and Code, significantly reducing "hallucinations" during search.
+Engine B: Llama-3 (Ollama)
+We use a local instance of Llama-3:8b running via Ollama.
+
+Role: Contextual synthesis and "Deep Reasoning."
+Semantic Enrichment: During ingestion, Llama-3 reads fragments and generates Synthetic Questions (e.g., "What happens if this generator fails?"). We index these questions alongside the data to make searches "human-friendly."
+4. Retrieval: How we "Find" Answers
+When you query the system, we use Hybrid Resonance:
+
+Vector Search: Matches the "math" of your question.
+Keyword Search (FTS): Matches exact terms like Site IDs (e.g., HUB402).
+Reciprocal Rank Fusion (RRF): We merge these two lists. If a result is both mathematically similar AND has the right keywords, it is boosted to the top.
+Synthesis: The top 20 fragments are sent to Llama-3 for the final technical report generation.
+🚀 Key Advantages
+Zero Cost: No OpenAI API bills.
+Mathematical Precision: The 5x Neural Fusion outperformed standard GPT embeddings in our internal audits for technical log accuracy.
