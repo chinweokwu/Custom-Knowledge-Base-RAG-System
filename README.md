@@ -39,7 +39,9 @@ The system doesn't just search for your question. It uses the LLM to generate a 
 The retrieval is self-correcting. If the initial search results are deemed "insufficient" by the AI, it automatically spawns a follow-up research task with a new query to fill the knowledge gaps before presenting the final answer.
 
 ### Phase 18: GraphRAG (Knowledge Graph)
-The system extracts (Subject | Relation | Object) triplets during ingestion, building a persistent Knowledge Graph---
+The system extracts (Subject | Relation | Object) triplets during ingestion, building a persistent Knowledge Graph. This allows the AI to traverse relationships (e.g., "System A *uses* Protocol B") even if they aren't mentioned in the same document chunk.
+
+---
 
 ## 🛠️ The Tech Stack
 
@@ -95,6 +97,22 @@ Once the boot sequence is complete, open your browser to:
 👉 **[http://localhost:8000](http://localhost:8000)**
 
 *The source files for this dashboard are located at: `app/api/static/index.html`*
+
+## 🕹️ How to Use the Frontend Dashboard
+
+Once the containers are running, you can access the full intelligence suite in your browser.
+
+1.  **Open the Admin UI**: Navigate to **[http://localhost:8000](http://localhost:8000)**.
+2.  **Ingest Documents**:
+    *   Find the **Pulse Ingestion** or **Upload Section**.
+    *   Drag and drop your PDFs, Excel files, or technical documents.
+    *   The **Worker** container will automatically begin the 5-layer vectorization process.
+3.  **Perform Neural Queries**:
+    *   Type your question in the search bar.
+    *   The system will use **HyDE** and **Reranking** to find the most technically accurate matches.
+4.  **Monitor System Health**:
+    *   The dashboard includes a live **System Pulse** section.
+    *   It tracks the connectivity of **Redis**, **Milvus**, and **Groq** in real-time.
 
 ---
 

@@ -24,17 +24,33 @@ class AIManager:
         # --- Groq Configuration (Privacy-First Cloud) ---
         self.groq_api_key = os.getenv("GROQ_API_KEY")
         self.model_name_llm = "llama-3.3-70b-versatile"
+        self.model_name_ingest = "llama-3.1-8b-instant"  # Faster, higher-limit model for bulk data
         
         # --- LangChain Compatibility Layer ---
         if self.groq_api_key:
+            # 1. Reasoning LLM (Heavy, High-IQ)
             self.llm = ChatGroq(
                 model=self.model_name_llm, 
                 groq_api_key=self.groq_api_key,
-                temperature=0.1
+                temperature=0.1,
+                max_retries=6,   
+                timeout=30       
             )
-            logger.info(f"Groq Cloud API Initialized (Model: {self.model_name_llm})")
+            
+            # 2. Ingestion LLM (Light, High-Throughput)
+            # This handles bulk tasks like question generation to save your TPD quota
+            self.llm_ingest = ChatGroq(
+                model=self.model_name_ingest,
+                groq_api_key=self.groq_api_key,
+                temperature=0.1,
+                max_retries=3,
+                timeout=20
+            )
+            
+            logger.info(f"Groq Cloud APIs Initialized (Reasoning: {self.model_name_llm} | Ingestion: {self.model_name_ingest})")
         else:
             self.llm = None
+            self.llm_ingest = None
             logger.warning("GROQ_API_KEY not found in .env. LLM features will be disabled.")
         
         # --- Neural Fusion Ensemble (5x MiniLM) - 100% Local ---
@@ -117,6 +133,10 @@ class AIManager:
         if not self.llm or not text or len(text.strip()) < 10:
             return []
 
+        # Jittered delay to prevent simultaneous hits from multiple worker processes
+        import random
+        await asyncio.sleep(random.uniform(0.1, 0.8))
+
         prompt = (
             "You are an expert Lead Engineer. Given the following data fragment, "
             "generate 3 brief questions that a human would ask to find this data. "
@@ -126,14 +146,18 @@ class AIManager:
         )
 
         try:
-            response = await asyncio.to_thread(self.llm.invoke, prompt)
+            # Shift to ingest-optimized model
+            response = await asyncio.to_thread(self.llm_ingest.invoke, prompt)
             content = response.content
             questions = [q.strip() for q in content.split('\n') if q.strip()]
             import re
             questions = [re.sub(r'^\d+\.\s*', '', q).strip() for q in questions if q.strip()]
             return questions[:3]
         except Exception as e:
-            logger.error(f"Groq Question Generation Error: {e}")
+            if "429" in str(e):
+                logger.warning("⚠️ Groq Ingest Quota Exceeded. Skipping synthetic questions for this chunk.")
+            else:
+                logger.error(f"Groq Question Generation Error: {e}")
             return []
             
     async def generate_hyde_document(self, query: str) -> str:
@@ -216,6 +240,10 @@ class AIManager:
         if not self.llm or not text or len(text.strip()) < 20:
             return []
 
+        # Jittered delay to prevent simultaneous hits from multiple worker processes
+        import random
+        await asyncio.sleep(random.uniform(0.1, 0.5))
+
         prompt = (
             "You are a Knowledge Graph Engineer. Extract exactly 3-5 high-value technical relationships from the text below.\n"
             "Focus on entities like Systems, Protocols, Identifiers, and their Relationships.\n\n"
@@ -227,7 +255,8 @@ class AIManager:
 
         try:
             logger.info("Extracting Knowledge Graph triplets...")
-            response = await asyncio.to_thread(self.llm.invoke, prompt)
+            # Shift to ingest-optimized model
+            response = await asyncio.to_thread(self.llm_ingest.invoke, prompt)
             lines = response.content.strip().split('\n')
             
             triplets = []
@@ -240,7 +269,10 @@ class AIManager:
             logger.info(f"Extracted {len(triplets)} triplets.")
             return triplets
         except Exception as e:
-            logger.error(f"Triplet Extraction Error: {e}")
+            if "429" in str(e):
+                logger.warning("⚠️ Groq Ingest Quota Exceeded. Skipping GraphRAG triplets for this chunk.")
+            else:
+                logger.error(f"Triplet Extraction Error: {e}")
             return []
 
 # Global instance
