@@ -8,7 +8,7 @@ The system has matured through three distinct architectural epochs:
 
 1.  **Phase I: Cloud Dependency**: Relied on external APIs (OpenAI/Pinecone) with high latency and privacy risks.
 2.  **Phase II: Heavy Local (Ollama + Postgres)**: Moved to local hosting, but was bogged down by the heavy footprint of PostgreSQL (pgvector) and the CPU overhead of Ollama.
-3.  **Phase III: Hybrid Neural Fusion (Current)**: A custom-built, optimized architecture that utilizes **ChromaDB** for zero-footprint portability, a **5x MiniLM Ensemble** for blazing-fast local vectorization, and **Groq Cloud (Llama-3.3 70B)** for high-speed agentic reasoning.
+3.  **Phase III: Enterprise Neural Fusion (Current)**: A production-ready architecture using **Milvus Standalone** for multi-container orchestration, a **5x MiniLM Ensemble** for ultra-fast vectorization, and **Groq Cloud** for high-speed agentic reasoning.
 
 ---
 
@@ -39,14 +39,13 @@ The system doesn't just search for your question. It uses the LLM to generate a 
 The retrieval is self-correcting. If the initial search results are deemed "insufficient" by the AI, it automatically spawns a follow-up research task with a new query to fill the knowledge gaps before presenting the final answer.
 
 ### Phase 18: GraphRAG (Knowledge Graph)
-The system extracts (Subject | Relation | Object) triplets during ingestion, building a persistent Knowledge Graph. This allows the AI to traverse relationships (e.g., "System A *uses* Protocol B") even if they aren't mentioned in the same document chunk.
-
----
+The system extracts (Subject | Relation | Object) triplets during ingestion, building a persistent Knowledge Graph---
 
 ## 🛠️ The Tech Stack
 
 *   **Logic Core**: FastAPI (Asynchronous Python 3.11+)
-*   **Vector Matrix**: ChromaDB (Zero-Footprint, Portable)
+*   **Vector Matrix**: **Milvus Standalone** (Enterprise-grade, Multi-container safe)
+*   **Storage Glue**: Minio (Object Storage) & Etcd (Metadata)
 *   **Background Ops**: Celery + Redis (Asynchronous Ingestion)
 *   **Neural Ensemble**: 5x Sentence-Transformers (Local CPU/GPU)
 *   **Cognitive Layer**: Groq Cloud API (Llama-3.3-70b-versatile)
@@ -56,85 +55,57 @@ The system extracts (Subject | Relation | Object) triplets during ingestion, bui
 
 ## ✨ Key Features
 
+*   **Hot-Reloading (Live Mode)**: Your local code is mounted directly into Docker. Edit your code on your laptop, and the containers update instantly.
 *   **Shielded ID Protection**: X-Algo boosters ensure that technical IDs (e.g., `HUB402`, `SW-12345`) are never lost in semantic noise.
 *   **Structural Content Mapping**: Specialized loaders for Excel and PDF that preserve tables and row-level relationships.
 *   **Heavy Parsing Mode**: OCR-capable ingestion for scanned technical diagrams and complex documentation.
-*   **Real-Time Health Monitoring**: Live dashboard tracking Redis heartbeat, ChromaDB counts, and Neural Ensemble readiness.
+*   **Milvus Standalone Architecture**: Optimized for parallel access from the API, Worker, and MCP server.
 
 ---
 
-## 🏁 Getting Started
+## 🏁 Getting Started (Linux/Docker)
 
-Choose your preferred deployment method below.
+Follow these steps to get your private intelligence engine running in minutes.
 
-### Option 1: Docker Deployment (Recommended)
+### 1. Environment Configuration
+Ensure your `.env` file contains your Groq API key. All paths have been pre-configured to be relative and Linux-compatible.
+```env
+GROQ_API_KEY=gsk_xxxx...
+REDIS_URL=redis://redis:6379/0
+MILVUS_URI=http://milvus:19530
+HF_HOME=./models_cache
+```
 
-Quickest way to get the full stack running with cross-platform compatibility.
+### 2. Launch the Stack
+Run the following command in the root directory:
+```bash
+docker-compose up -d
+```
 
-**Prerequisites:** Docker and Docker Compose installed.
+### 3. Monitor the "Neural Boot Sequence"
+The first time you start, the system downloads and loads 5 heavy AI models into memory. Monitor this in real-time:
+```bash
+docker-compose logs -f
+```
+Wait for the line: `Uvicorn running on http://0.0.0.0:8000`.
 
-1.  **Configure Environment**:
-    Ensure your `.env` file has the `GROQ_API_KEY`. The D-drive paths in `.env` are ignored by Docker in favor of internal volumes.
+### 4. Access the Frontend Dashboard
+Once the boot sequence is complete, open your browser to:
 
-2.  **Launch the Stack**:
-    ```bash
-    docker-compose up -d
-    ```
+👉 **[http://localhost:8000](http://localhost:8000)**
 
-3.  **Access the Admin Dashboard**:
-    Open [http://localhost:8000](http://localhost:8000)
-    
-    The dashboard provides a visual interface for:
-    - **Neural Queries**: Real-time RAG searching and AI synthesis.
-    - **Pulse Center**: Drag-and-drop ingestion of technical documents.
-    - **Memory Explorer**: Live view of vector database fragments.
-    - **System Health**: Real-time monitoring of Redis, ChromaDB, and Groq.
-
----
-
-### Option 2: Local Manual Setup
-
-Best for development or debugging.
-
-**Prerequisites:** Python 3.11+, Redis Server.
-
-1.  **Environment Configuration**:
-    Create a `.env` file in the root directory (refer to `.env.example`):
-    ```env
-    GROQ_API_KEY=your_key_here
-    REDIS_URL=redis://localhost:6380/0
-    HF_HOME=D:\AI_Models_Cache
-    ```
-
-2.  **Install Dependencies**:
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-3.  **Start Services**:
-    If on Windows, you can use the provided orchestrator:
-    ```powershell
-    ./start_app.bat
-    ```
-    
-    Or start manually:
-    - **Redis**: Start on port 6380.
-    - **Worker**: `celery -A app.services.tasks worker --loglevel=info -P solo`
-    - **API**: `python -m app.api.main`
-    - **MCP**: `python -m app.mcp.mcp_server --transport sse --port 9382`
-
-4.  **Access the Admin UI**:
-    Open [http://localhost:8000](http://localhost:8000)
+*The source files for this dashboard are located at: `app/api/static/index.html`*
 
 ---
 
 ## 📂 Project Structure & Persistence
 
-When running via Docker, the following host directories are used for persistence:
-*   `./chroma_db`: Vector database storage.
+Your data is safely persisted on your host machine in these directories:
+*   `./milvus_data`: Vector database and metadata (Milvus/Etcd/Minio).
 *   `./models_cache`: AI model weights (HuggingFace).
-*   `./logs`: Application and service logs.
-*   `./uploads`: Temporary file storage for ingestion.
+*   `./logs`: Application logs for debugging.
+*   `./uploads`: Temporary storage for document ingestion.
+*   `./media`: Extracted images from PDFs.
 
 ---
 

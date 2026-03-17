@@ -141,6 +141,10 @@ async function fetchSystemHealth() {
         const data = await response.json();
 
         updateHealthCard('database', data.database);
+        if (data.database_type) {
+            const dbHealth = document.getElementById('database-health');
+            if (dbHealth) dbHealth.innerText = `${data.database_type} (${data.database})`;
+        }
         updateHealthCard('redis', data.redis);
         updateHealthCard('graph_rag', data.graph_rag);
         updateHealthCard('groq_cloud', data.groq_cloud ? 'online' : 'offline');
@@ -152,9 +156,9 @@ async function fetchSystemHealth() {
         }
 
         // Update header summary
-        const allOnline = data.database === 'online' && 
-                          data.redis === 'online' && 
-                          data.graph_rag.includes('online');
+        const allOnline = data.database === 'online' &&
+            data.redis === 'online' &&
+            data.graph_rag.includes('online');
         systemStatusSummary.innerHTML = allOnline
             ? '<span class="dot green"></span> System Online'
             : '<span class="dot red"></span> Service Interruption';

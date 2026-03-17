@@ -48,7 +48,8 @@ class AIManager:
         
         logger.info(f"Initializing Local Neural Fusion Ensemble (5x Models)...")
         # Set cache to D Drive
-        os.environ["HF_HOME"] = os.getenv("HF_HOME", "D:\\AI_Models_Cache")
+        # Set cache to relative path for Linux/Docker compatibility
+        os.environ["HF_HOME"] = os.getenv("HF_HOME", "./models_cache")
         
         self.ensemble = {}
         for name in self.model_names:

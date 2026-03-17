@@ -20,7 +20,8 @@ from sentence_transformers import CrossEncoder
 from langchain_core.prompts import ChatPromptTemplate
 from app.core.logger_config import get_logger
 from app.core.ai_manager import ai_manager
-from app.core.chroma_client import get_chroma_collection
+# from app.core.chroma_client import get_chroma_collection
+from app.core.milvus_client import milvus_client, init_milvus_collection, COLLECTION_NAME
 from app.core.graph_manager import graph_manager
 
 # Initialize Logger
@@ -203,20 +204,14 @@ async def get_system_health():
 
     # Add memory count
     try:
-        collection = get_chroma_collection()
-        health["memory_count"] = collection.count()
+        init_milvus_collection()
+        stats = milvus_client.get_collection_stats(collection_name=COLLECTION_NAME)
+        health["memory_count"] = int(stats.get("row_count", 0))
+        health["database"] = "online"
+        health["database_type"] = "Milvus Lite"
     except Exception:
         health["memory_count"] = 0
-    # Check Memory Count
-    try:
-        # with pool.connection() as conn:
-        #     with conn.cursor() as cur:
-        #         cur.execute("SELECT count(*) FROM ai_memory")
-        #         health["memory_count"] = cur.fetchone()[0]
-        collection = get_chroma_collection()
-        health["memory_count"] = collection.count()
-    except Exception:
-        health["memory_count"] = 0
+        health["database"] = "offline"
         
     return health
 
@@ -246,23 +241,24 @@ async def get_memories(limit: int = 10):
         #             })
         #         return memories
         
-        # Approximate recency check for Chroma by getting recent items 
-        # (Chroma doesn't sort well out of the box without filtering, we just get N items)
-        collection = get_chroma_collection()
-        res = collection.get(
+        # Approximate recency check for Milvus Lite
+        init_milvus_collection()
+        res = milvus_client.query(
+            collection_name=COLLECTION_NAME,
+            filter="",
             limit=limit,
-            include=["metadatas", "documents"]
+            output_fields=["id", "content", "created_at"]
         )
         memories = []
         from datetime import datetime, timezone
         
-        if res and res["ids"]:
-            for i, doc_id in enumerate(res["ids"]):
+        if res:
+            for item in res:
                 memories.append({
-                    "id": doc_id,
-                    "content": res["documents"][i],
-                    "metadata": res["metadatas"][i] if res["metadatas"] else {},
-                    "created_at": res["metadatas"][i].get("created_at", datetime.now(timezone.utc).isoformat()) if res["metadatas"] else datetime.now(timezone.utc).isoformat()
+                    "id": str(item["id"]),
+                    "content": item["content"],
+                    "metadata": item, # Milvus returns everything requested in output_fields
+                    "created_at": item.get("created_at", datetime.now(timezone.utc).isoformat())
                 })
         return memories
     except Exception as e:
@@ -381,35 +377,36 @@ async def get_hybrid_context(query_text: str, limit: int) -> List[Dict[str, Any]
     logger.info(f"Executing Batch Neural Fusion for {len(queries_to_search)} query variations...")
     query_vectors = await ai_manager.get_embeddings_batch(queries_to_search)
     
-    # CHROMADB VECTOR SEARCH
-    collection = get_chroma_collection()
+    # MILVUS LITE VECTOR SEARCH
+    init_milvus_collection()
     for sq, query_vector in zip(queries_to_search, query_vectors):
         logger.info(f"Executing Vector Branch: '{sq}'")
         try:
-            res = collection.query(
-                query_embeddings=[query_vector],
-                n_results=50,
-                include=["documents", "metadatas"]
+            res = milvus_client.search(
+                collection_name=COLLECTION_NAME,
+                data=[query_vector],
+                limit=50,
+                output_fields=["content", "created_at", "synthetic_questions", "parent_content"]
             )
             
-            if res and res["ids"] and len(res["ids"][0]) > 0:
-                # Format to match postgres output: (id, content, metadata, created_at)
-                for i, doc_id in enumerate(res["ids"][0]):
-                    content = res["documents"][0][i]
-                    meta = res["metadatas"][0][i] if res["metadatas"] else {}
+            if res and len(res[0]) > 0:
+                # Format to match internal expectations: (id, content, metadata, created_at)
+                for hit in res[0]:
+                    doc_id = str(hit["id"])
+                    content = hit["entity"].get("content", "")
+                    meta = hit["entity"]
                     
                     # Parse created_at from string back into datetime safely
                     created_at_time = now
                     if "created_at" in meta:
                         try:
-                            # Python 3.11 supports fromisoformat seamlessly with 'Z' or +00:00
                             created_at_time = datetime.fromisoformat(meta["created_at"].replace('Z', '+00:00'))
                         except Exception:
                             pass
                             
                     all_vector_results.append((doc_id, content, meta, created_at_time))
         except Exception as e:
-            logger.error(f"ChromaDB search failed: {e}")
+            logger.error(f"Milvus Lite search failed: {e}")
 
     # 1c. Global Keyword Search (Independent candidate pool)
     # text_results = [] (Disabled strict text search as vector usually covers this local need well, 

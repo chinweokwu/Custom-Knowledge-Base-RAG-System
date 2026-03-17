@@ -135,7 +135,8 @@ def load_document(source: str, heavy_parsing: bool = False) -> List[Document]:
         # Soft Visual Discovery: Scan and Extract images
         import pypdf
         reader = pypdf.PdfReader(source)
-        media_dir = "D:\\AI knowledge Based\\media"
+        BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        media_dir = os.path.join(BASE_DIR, "media")
         
         for i, page in enumerate(reader.pages):
             # pypdf 3.0.0+ image extraction

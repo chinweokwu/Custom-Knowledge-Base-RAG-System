@@ -6,7 +6,8 @@ from app.core.logger_config import get_logger
 
 logger = get_logger("graph_manager")
 
-GRAPH_PATH = "D:\\AI knowledge Based\\graph_store.pkl"
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+GRAPH_PATH = os.path.join(BASE_DIR, "graph_store.pkl")
 
 class GraphManager:
     _instance = None

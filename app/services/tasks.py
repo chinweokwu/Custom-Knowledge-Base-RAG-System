@@ -8,7 +8,8 @@ from celery import Celery
 from dotenv import load_dotenv
 from app.core.logger_config import get_logger
 from app.core.ai_manager import ai_manager
-from app.core.chroma_client import get_chroma_collection
+# from app.core.chroma_client import get_chroma_collection
+from app.core.milvus_client import milvus_client, init_milvus_collection, COLLECTION_NAME
 from app.core.graph_manager import graph_manager
 from datetime import datetime, timezone
 import uuid
@@ -42,6 +43,9 @@ def process_and_store_batch(self, chunks, metadata):
     if not chunks:
         logger.warning("Received empty chunks list. Skipping ingestion commit.")
         return {"status": "skipped", "count": 0, "reason": "empty_chunks"}
+    
+    # Ensure Milvus is ready
+    init_milvus_collection()
         
     try:
         total = len(chunks)
@@ -133,39 +137,39 @@ def process_and_store_batch(self, chunks, metadata):
                     
                 enriched_metadata_list.append(chunk_meta)
 
-        # Store in DB with high-speed executemany
-        self.update_state(state='PROGRESS', meta={'current': total, 'total': total, 'status': 'Committing to Vector DB...'})
-        
-        # Prepare data for high-speed insertion into ChromaDB
-        # We need IDs for Chroma. We'll use UUIDs for new chunks.
-        ids = [str(uuid.uuid4()) for _ in range(len(chunks))]
-        
-        # Ensure metadata values are basic types (Chroma enforces dict[str, str|int|float|bool]])
-        clean_metadatas = []
-        for meta in enriched_metadata_list:
+        # Prepare data for high-speed insertion into Milvus Lite
+        data_to_insert = []
+        for j, meta in enumerate(enriched_metadata_list):
+            # Clean metadata for Milvus (optional but good for consistency)
             clean_meta = {}
             for k, v in meta.items():
                 if isinstance(v, (str, int, float, bool)):
                     clean_meta[k] = v
-                elif isinstance(v, list) and all(isinstance(i, str) for i in v):
-                    # Chroma doesn't natively support lists of strings well except in newer versions. 
-                    # We'll join them to be safe for synthetic_questions
-                    if k == "synthetic_questions":
-                        clean_meta[k] = " | ".join(v)
-                    else:
-                        clean_meta[k] = str(v)
+                elif isinstance(v, list) and k == "synthetic_questions":
+                    clean_meta[k] = " | ".join(v)
                 else:
                     clean_meta[k] = str(v)
-                    
+            
             clean_meta["created_at"] = datetime.now(timezone.utc).isoformat()
-            clean_metadatas.append(clean_meta)
+            
+            record = {
+                "embedding": embeddings_list[j],
+                "content": final_child_chunks[j],
+                **clean_meta
+            }
+            data_to_insert.append(record)
 
-        collection = get_chroma_collection()
-        collection.add(
-            ids=ids,
-            embeddings=embeddings_list,
-            metadatas=clean_metadatas,
-            documents=final_child_chunks
+        # collection = get_chroma_collection()
+        # collection.add(
+        #     ids=ids,
+        #     embeddings=embeddings_list,
+        #     metadatas=clean_metadatas,
+        #     documents=final_child_chunks
+        # )
+        
+        milvus_client.insert(
+            collection_name=COLLECTION_NAME,
+            data=data_to_insert
         )
         
         logger.info(f"Task SUCCESS: Processed {len(chunks)} chunks using {model_name}.")
@@ -203,7 +207,10 @@ def process_and_store_memory(self, text, metadata):
 
         self.update_state(state='PROGRESS', meta={'status': 'Storing in Vector DB...'})
         
-        # Clean metadata for ChromaDB
+        # Ensure Milvus is ready
+        init_milvus_collection()
+
+        # Clean metadata for Milvus Lite
         clean_meta = {}
         for k, v in metadata.items():
             if isinstance(v, (str, int, float, bool)):
@@ -215,12 +222,21 @@ def process_and_store_memory(self, text, metadata):
                 
         clean_meta["created_at"] = datetime.now(timezone.utc).isoformat()
         
-        collection = get_chroma_collection()
-        collection.add(
-            ids=[str(uuid.uuid4())],
-            embeddings=[vector],
-            metadatas=[clean_meta],
-            documents=[text]
+        # collection = get_chroma_collection()
+        # collection.add(
+        #     ids=[str(uuid.uuid4())],
+        #     embeddings=[vector],
+        #     metadatas=[clean_meta],
+        #     documents=[text]
+        # )
+
+        milvus_client.insert(
+            collection_name=COLLECTION_NAME,
+            data=[{
+                "embedding": vector,
+                "content": text,
+                **clean_meta
+            }]
         )
         
         logger.info(f"Task COMPLETED: process_and_store_memory success using {model_name}.")
