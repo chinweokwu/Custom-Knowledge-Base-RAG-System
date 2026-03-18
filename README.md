@@ -6,9 +6,9 @@ A high-precision, zero-footprint Knowledge Base system engineered for technical 
 
 The system has matured through three distinct architectural epochs:
 
-1.  **Phase I: Cloud Dependency**: Relied on external APIs (OpenAI/Pinecone) with high latency and privacy risks.
-2.  **Phase II: Heavy Local (Ollama + Postgres)**: Moved to local hosting, but was bogged down by the heavy footprint of PostgreSQL (pgvector) and the CPU overhead of Ollama.
-3.  **Phase III: Enterprise Neural Fusion (Current)**: A production-ready architecture using **Milvus Standalone** for multi-container orchestration, a **5x MiniLM Ensemble** for ultra-fast vectorization, and **Groq Cloud** for high-speed agentic reasoning.
+1.  **Cloud Dependency**: Relied on external APIs (OpenAI/Pinecone) with high latency and privacy risks.
+2.  **Heavy Local (Ollama + Postgres)**: Moved to local hosting, but was bogged down by the heavy footprint of PostgreSQL (pgvector) and the CPU overhead of Ollama.
+3.  **Enterprise Neural Fusion (Current)**: A production-ready architecture using **Milvus Standalone** for multi-container orchestration, a **5x MiniLM Ensemble** for ultra-fast vectorization, and **Groq Cloud** for high-speed agentic reasoning.
 
 ---
 
@@ -32,13 +32,13 @@ Every document fragment is passed through five specialized models simultaneously
 
 The engine operates on a sophisticated retrieval pipeline, featuring:
 
-### Phase 15: HyDE (Hypothetical Document Embeddings)
+### HyDE (Hypothetical Document Embeddings)
 The system doesn't just search for your question. It uses the LLM to generate a **hypothetical perfect answer** (a "fake" manual page), vectorizes *that*, and searches for "Answer-to-Answer" matches. This bypasses the keyword mismatch problem.
 
-### Phase 17: Agentic Reasoning (The Researcher)
+### Agentic Reasoning (The Researcher)
 The retrieval is self-correcting. If the initial search results are deemed "insufficient" by the AI, it automatically spawns a follow-up research task with a new query to fill the knowledge gaps before presenting the final answer.
 
-### Phase 18: GraphRAG (Knowledge Graph)
+### GraphRAG (Knowledge Graph)
 The system extracts (Subject | Relation | Object) triplets during ingestion, building a persistent Knowledge Graph. This allows the AI to traverse relationships (e.g., "System A *uses* Protocol B") even if they aren't mentioned in the same document chunk.
 
 ---
@@ -52,6 +52,14 @@ The system extracts (Subject | Relation | Object) triplets during ingestion, bui
 *   **Neural Ensemble**: 5x Sentence-Transformers (Local CPU/GPU)
 *   **Cognitive Layer**: Groq Cloud API (Llama-3.3-70b-versatile)
 *   **UI Foundation**: Modern Vanilla JS + CSS (Admin Dashboard)
+
+---
+
+## 📚 Detailed Documentation
+
+For a comprehensive breakdown of how the system works, including the **Write** and **Read** flows and more specialized features, check out our technical deep-dive:
+
+👉 **[Features & Workflows Guide](docs/features_and_workflows.md)**
 
 ---
 
