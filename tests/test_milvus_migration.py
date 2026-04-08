@@ -8,7 +8,12 @@ from datetime import datetime, timezone
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Set unique URI for verification to avoid collision
-os.environ["MILVUS_URI"] = "http://localhost:19530"
+# Ensure MILVUS_URI is UNSET to prevent pymilvus from attempting a remote gRPC connection
+if "MILVUS_URI" in os.environ:
+    del os.environ["MILVUS_URI"]
+
+# Using APP_MILVUS_URI to avoid conflict with pymilvus internal env var handling
+os.environ["APP_MILVUS_URI"] = "test_milvus_lite.db"
 
 from app.core.milvus_client import milvus_client, init_milvus_collection, COLLECTION_NAME
 from app.core.ai_manager import ai_manager

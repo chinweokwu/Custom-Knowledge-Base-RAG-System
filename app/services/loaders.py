@@ -1,7 +1,7 @@
 from typing import List
 import os
 import time
-import pandas as pd
+import polars as pl
 from PIL import Image
 import io
 from langchain_community.document_loaders import (
@@ -210,10 +210,10 @@ def load_document(source: str, heavy_parsing: bool = False) -> List[Document]:
                             metadata={"source": self.path, "sheet": sheet_name, "is_visual": True}
                         ))
 
-                # Load data using Pandas
-                df = pd.read_excel(self.path, engine='openpyxl')
-                for idx, row in df.iterrows():
-                    text = " | ".join([f"[{k}]: {v}" for k, v in row.items() if pd.notna(v)])
+                # Load data using Polars (Rust-backed high speed)
+                df = pl.read_excel(self.path)
+                for idx, row in enumerate(df.to_dicts()):
+                    text = " | ".join([f"[{k}]: {v}" for k, v in row.items() if v is not None])
                     docs.append(Document(page_content=text, metadata={"source": self.path, "row": idx}))
                 return docs
         loader = RowAwareLoader(source)

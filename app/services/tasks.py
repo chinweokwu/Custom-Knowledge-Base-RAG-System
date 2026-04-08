@@ -11,6 +11,7 @@ from app.core.ai_manager import ai_manager
 # from app.core.chroma_client import get_chroma_collection
 from app.core.milvus_client import milvus_client, init_milvus_collection, COLLECTION_NAME
 from app.core.graph_manager import graph_manager
+import polars as pl
 from datetime import datetime, timezone
 import uuid
 
@@ -138,24 +139,33 @@ def process_and_store_batch(self, chunks, metadata):
                 enriched_metadata_list.append(chunk_meta)
 
         # Prepare data for high-speed insertion into Milvus Lite
+        # Phase 19: Vectorized Metadata Enrichment (Polars)
+        df_meta = pl.DataFrame(enriched_metadata_list)
+        
+        # 1. Join synthetic questions into a searchable string
+        if "synthetic_questions" in df_meta.columns:
+            df_meta = df_meta.with_columns(
+                pl.col("synthetic_questions").list.join(" | ")
+            )
+            
+        # 2. Ensure all fields are Milvus-compatible (Stringify complex objects)
+        for col, dtype in zip(df_meta.columns, df_meta.dtypes):
+            if dtype in [pl.List, pl.Object, pl.Struct] and col != "embedding":
+                 df_meta = df_meta.with_columns(pl.col(col).cast(pl.String))
+                 
+        # 3. Add global metadata (Timestamp)
+        df_meta = df_meta.with_columns(
+            pl.lit(datetime.now(timezone.utc).isoformat()).alias("created_at")
+        )
+        
+        # 4. Final assembly for Milvus insertion
+        clean_metadatas = df_meta.to_dicts()
         data_to_insert = []
-        for j, meta in enumerate(enriched_metadata_list):
-            # Clean metadata for Milvus (optional but good for consistency)
-            clean_meta = {}
-            for k, v in meta.items():
-                if isinstance(v, (str, int, float, bool)):
-                    clean_meta[k] = v
-                elif isinstance(v, list) and k == "synthetic_questions":
-                    clean_meta[k] = " | ".join(v)
-                else:
-                    clean_meta[k] = str(v)
-            
-            clean_meta["created_at"] = datetime.now(timezone.utc).isoformat()
-            
+        for j in range(len(clean_metadatas)):
             record = {
                 "embedding": embeddings_list[j],
                 "content": final_child_chunks[j],
-                **clean_meta
+                **clean_metadatas[j]
             }
             data_to_insert.append(record)
 
@@ -210,17 +220,19 @@ def process_and_store_memory(self, text, metadata):
         # Ensure Milvus is ready
         init_milvus_collection()
 
-        # Clean metadata for Milvus Lite
-        clean_meta = {}
-        for k, v in metadata.items():
-            if isinstance(v, (str, int, float, bool)):
-                clean_meta[k] = v
-            elif isinstance(v, list) and k == "synthetic_questions":
-                clean_meta[k] = " | ".join(v)
-            else:
-                clean_meta[k] = str(v)
-                
-        clean_meta["created_at"] = datetime.now(timezone.utc).isoformat()
+        # Clean metadata for Milvus Lite (Polars)
+        df_temp = pl.DataFrame([metadata])
+        if "synthetic_questions" in df_temp.columns:
+            df_temp = df_temp.with_columns(pl.col("synthetic_questions").list.join(" | "))
+            
+        for col, dtype in zip(df_temp.columns, df_temp.dtypes):
+            if dtype in [pl.List, pl.Object, pl.Struct]:
+                 df_temp = df_temp.with_columns(pl.col(col).cast(pl.String))
+                 
+        df_temp = df_temp.with_columns(
+            pl.lit(datetime.now(timezone.utc).isoformat()).alias("created_at")
+        )
+        clean_meta = df_temp.to_dicts()[0]
         
         # collection = get_chroma_collection()
         # collection.add(

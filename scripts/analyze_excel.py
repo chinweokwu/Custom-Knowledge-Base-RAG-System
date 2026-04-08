@@ -1,4 +1,4 @@
-import pandas as pd
+import polars as pl
 import os
 
 def analyze_excel(file_path):
@@ -7,22 +7,24 @@ def analyze_excel(file_path):
             print(f"ERROR: File not found at {file_path}")
             return
         
-        # Using openpyxl as engine for Excel logs
-        df = pd.read_excel(file_path, engine='openpyxl')
+        # Using Polars for high-speed Excel analysis
+        df = pl.read_excel(file_path)
         print(f"EXCEL_STRUCTURE_REPORT: {os.path.basename(file_path)}")
-        print(f"COLUMNS: {list(df.columns)}")
+        print(f"COLUMNS: {df.columns}")
         print(f"TOTAL_ROWS: {len(df)}")
         
         print("\n--- FIRST 3 ROWS SAMPLE ---")
-        print(df.head(3).to_string())
+        print(df.head(3))
         
         # Specifically look for the target ID
         found = False
+        target_id = "jwx1369347"
         for col in df.columns:
-            matches = df[df[col].astype(str).str.contains("jwx1369347", case=False, na=False)]
-            if not matches.empty:
+            # Polars filter: cast to string and check for substring
+            matches = df.filter(pl.col(col).cast(pl.String).str.contains(f"(?i){target_id}"))
+            if not matches.is_empty():
                 print(f"\n--- MATCH FOUND IN COLUMN: {col} ---")
-                print(matches.head(1).to_string())
+                print(matches.head(1).to_dicts()[0])
                 found = True
         
         if not found:

@@ -7,15 +7,16 @@ logger = get_logger("milvus_client")
 load_dotenv()
 
 # We will use a local SQLite-like file for Milvus Lite
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-MILVUS_URI = os.getenv("MILVUS_URI", "http://localhost:19530")
+# Default to local file for Milvus Lite (Zero-Footprint)
+# Renamed to APP_MILVUS_URI to avoid conflict with pymilvus internal env var handling
+APP_MILVUS_URI = os.getenv("APP_MILVUS_URI", "milvus_lite.db")
 COLLECTION_NAME = "ai_memory"
 DIMENSION = 1920
 
 # Initialize the Milvus client
 try:
-    milvus_client = MilvusClient(uri=MILVUS_URI)
-    logger.info(f"✅ Connected to Milvus at {MILVUS_URI}")
+    milvus_client = MilvusClient(uri=APP_MILVUS_URI)
+    logger.info(f"✅ Connected to Milvus at {APP_MILVUS_URI}")
 except Exception as e:
     logger.error(f"❌ Failed to connect to Milvus: {e}")
     raise
