@@ -6,6 +6,10 @@ const queryInput = document.getElementById('query-input');
 const downloadBtn = document.getElementById('download-report-btn');
 let lastQueryResult = null;
 
+// --- IMPROVEMENT 2: Session ID for Conversation Memory ---
+// Unique per browser tab/session — persists until page is refreshed
+const SESSION_ID = 'session_' + Math.random().toString(36).substr(2, 9);
+
 // Neural Query Logic
 if (searchBtn && queryInput) {
     searchBtn.addEventListener('click', performNeuralQuery);
@@ -16,6 +20,62 @@ if (searchBtn && queryInput) {
 
 if (downloadBtn) {
     downloadBtn.addEventListener('click', downloadReport);
+}
+
+// --- Neural Flow Control ---
+function setFlowMode(mode, content = "") {
+    const paths = document.querySelectorAll('.flow-path');
+    const nodes = document.querySelectorAll('.flow-node');
+    const container = document.getElementById('neural-flow-map');
+    
+    // Reset
+    paths.forEach(p => { p.className = 'flow-path'; });
+    nodes.forEach(n => { n.classList.remove('active'); });
+    document.querySelectorAll('.data-packet').forEach(p => p.remove());
+
+    const snippet = content ? content.substring(0, 100) + "..." : "Technical Data Fragment...";
+
+    if (mode === 'write') {
+        paths.forEach(p => { 
+            p.classList.add('pulse-forward'); 
+            const packet = document.createElement('div');
+            packet.className = 'data-packet streaming';
+            packet.innerText = snippet;
+            p.appendChild(packet);
+        });
+        document.getElementById('node-input').classList.add('active');
+        document.getElementById('node-process').classList.add('active');
+        document.getElementById('node-memory').classList.add('active');
+    } else if (mode === 'read') {
+        paths.forEach(p => { 
+            p.classList.add('pulse-backward'); 
+            const packet = document.createElement('div');
+            packet.className = 'data-packet streaming-backward';
+            packet.innerText = snippet;
+            p.appendChild(packet);
+        });
+        document.getElementById('node-output').classList.add('active');
+        document.getElementById('node-brain').classList.add('active');
+        document.getElementById('node-memory').classList.add('active');
+    } else if (mode === 'api') {
+        paths.forEach(p => { 
+            p.classList.add('pulse-api'); 
+            const packet = document.createElement('div');
+            packet.className = 'data-packet streaming';
+            packet.innerText = "API LOG: [RNOC] SYNCING DATA STREAM...";
+            p.appendChild(packet);
+        });
+        document.getElementById('node-api').classList.add('active');
+        document.getElementById('node-process').classList.add('active');
+        document.getElementById('node-memory').classList.add('active');
+    }
+}
+
+function resetFlow() {
+    const paths = document.querySelectorAll('.flow-path');
+    const nodes = document.querySelectorAll('.flow-node');
+    paths.forEach(p => { p.className = 'flow-path'; });
+    nodes.forEach(n => { n.classList.remove('active'); });
 }
 
 async function performNeuralQuery() {
@@ -31,9 +91,10 @@ async function performNeuralQuery() {
     responseBox.classList.add('loading');
     searchBtn.disabled = true;
     downloadBtn.disabled = true;
+    setFlowMode('read', query);
 
     try {
-        const response = await fetch(`${API_BASE}/search?query=${encodeURIComponent(query)}&limit=10`);
+        const response = await fetch(`${API_BASE}/search?query=${encodeURIComponent(query)}&limit=10&session_id=${SESSION_ID}`);
         const data = await response.json();
         lastQueryResult = { query, ...data };
         // 1. Show Retrieved Knowledge (X-Algo Evidence)
@@ -44,29 +105,55 @@ async function performNeuralQuery() {
                         <span class="score-pill">Score: ${m.score.toFixed(2)}</span>
                         <span class="source-link">${m.metadata.filename || 'System Source'}</span>
                     </div>
+                    ${m.retrieval_reason ? `<div style="font-size:0.72rem;color:#94a3b8;margin:4px 0 6px 0;padding:2px 8px;background:#1e293b;border-radius:4px;display:inline-block">🔍 ${m.retrieval_reason}</div>` : ''}
                     ${m.metadata.is_visual && m.metadata.media_url ? `
                         <div class="memory-image">
                             <img src="${API_BASE}${m.metadata.media_url}" alt="Neural Evidence" onclick="window.open(this.src)">
                         </div>
                     ` : ''}
                     <div class="memory-content">${m.content}</div>
+                    <div class="feedback-controls">
+                        <button class="feedback-btn up" onclick="submitFeedback('${m.id}', 1.0, this)">
+                            👍 Helpful
+                        </button>
+                        <button class="feedback-btn down" onclick="submitFeedback('${m.id}', -1.0, this)">
+                            👎 Irrelevant
+                        </button>
+                        <span class="feedback-status" id="feedback-status-${m.id}"></span>
+                    </div>
                 </div>
             `).join('');
         } else {
             retrievedContainer.innerHTML = '<div class="empty-state">No relevant evidence fragments found in neural core.</div>';
         }
 
-        // 2. Show AI Answer (Master Synthesis)
+        // 2. Show Confidence Badge + AI Answer
+        const confidence = data.confidence || 'MEDIUM';
+        const confidenceReason = data.context && data.context.length > 0 ? data.context[0].confidence_reason : '';
+        
+        const confidenceMap = {
+            'EXCEPTIONAL': { icon: '💎', label: 'Exceptional Accuracy', color: '#8b5cf6' },
+            'HIGH':        { icon: '🟢', label: 'High Confidence',      color: '#22c55e' },
+            'MEDIUM':      { icon: '🟡', label: 'Medium Confidence',    color: '#f59e0b' },
+            'LOW':         { icon: '🔴', label: 'Low Confidence',       color: '#ef4444' },
+            'NONE':        { icon: '⚪', label: 'No Evidence',          color: '#94a3b8' }
+        };
+        
+        const conf = confidenceMap[confidence] || confidenceMap['MEDIUM'];
+        const confidenceBadge = `
+            <div class="confidence-container" style="margin-bottom: 16px;">
+                <div style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;background:${conf.color}22;border:1px solid ${conf.color};font-size:0.8rem;font-weight:600;color:${conf.color}">
+                    ${conf.icon} ${conf.label}
+                </div>
+                ${confidenceReason ? `<div style="font-size:0.75rem;color:#94a3b8;margin-top:6px;font-style:italic;">ℹ️ ${confidenceReason}</div>` : ''}
+            </div>`;
+
         if (data.answer) {
-            // Use marked for high-quality rendering if available
-            if (typeof marked !== 'undefined') {
-                responseBox.innerHTML = marked.parse(data.answer);
-            } else {
-                responseBox.innerText = data.answer;
-            }
+            const answerHtml = typeof marked !== 'undefined' ? marked.parse(data.answer) : data.answer;
+            responseBox.innerHTML = confidenceBadge + answerHtml;
             downloadBtn.disabled = false;
         } else {
-            responseBox.innerHTML = `<div class="empty-state">Knowledge gap detected. The AI could not synthesize a confirmed answer from the retrieved context.</div>`;
+            responseBox.innerHTML = `${confidenceBadge}<div class="empty-state">Knowledge gap detected. The AI could not synthesize a confirmed answer from the retrieved context.</div>`;
         }
 
     } catch (err) {
@@ -75,6 +162,43 @@ async function performNeuralQuery() {
     } finally {
         responseBox.classList.remove('loading');
         searchBtn.disabled = false;
+        resetFlow();
+    }
+}
+
+async function submitFeedback(docId, score, btn) {
+    if (btn.classList.contains('active')) return;
+    
+    const container = btn.closest('.feedback-controls');
+    const statusEl = document.getElementById(`feedback-status-${docId}`);
+    const allBtns = container.querySelectorAll('.feedback-btn');
+    
+    // Optimistic UI
+    allBtns.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    if (statusEl) statusEl.innerText = 'Syncing...';
+
+    try {
+        const response = await fetch(`${API_BASE}/feedback`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                doc_id: docId,
+                query: queryInput.value,
+                score: score
+            })
+        });
+        
+        const result = await response.json();
+        if (result.status === 'success') {
+            if (statusEl) statusEl.innerText = 'Learned! ✓';
+            btn.style.borderColor = score > 0 ? '#10b981' : '#ef4444';
+        } else {
+            if (statusEl) statusEl.innerText = 'Failed';
+        }
+    } catch (err) {
+        console.error("Feedback error:", err);
+        if (statusEl) statusEl.innerText = 'Error';
     }
 }
 
@@ -127,6 +251,7 @@ tabButtons.forEach(btn => {
 
         // Load data if needed
         if (tabId === 'explorer') fetchMemories();
+        if (tabId === 'graph') fetchGraphData();
         if (tabId === 'system') fetchSystemHealth();
     });
 });
@@ -206,6 +331,28 @@ async function fetchMemories() {
     }
 }
 
+const apiSyncBtn = document.getElementById('api-sync-btn');
+if (apiSyncBtn) {
+    apiSyncBtn.addEventListener('click', async () => {
+        apiSyncBtn.disabled = true;
+        apiSyncBtn.innerText = '⌛ Syncing...';
+        setFlowMode('api');
+
+        try {
+            const response = await fetch(`${API_BASE}/ingest/api-sync`, { method: 'POST' });
+            const result = await response.json();
+            alert(`Sync Complete! ${result.processed || 0} logs analyzed and stored.`);
+        } catch (err) {
+            console.error("Sync error:", err);
+            alert("API Sync failed. Check server logs.");
+        } finally {
+            apiSyncBtn.disabled = false;
+            apiSyncBtn.innerText = '🔄 Sync with External API (T-API)';
+            resetFlow();
+        }
+    });
+}
+
 const dropZone = document.getElementById('drop-zone');
 const fileInput = document.getElementById('file-input');
 const pulseList = document.getElementById('pulse-list');
@@ -254,6 +401,7 @@ async function uploadFile(file) {
     const item = document.createElement('div');
     item.className = 'pulse-item';
     item.id = `item-${itemId}`;
+    setFlowMode('write', file.name);
     item.innerHTML = `
         <div class="item-main">
             <div class="file-info">
@@ -313,6 +461,7 @@ async function uploadFile(file) {
             } else {
                 updateProgress(itemId, 100, `Success: ${result.chunks_identified} chunks ingested.`);
                 item.classList.add('done');
+                resetFlow();
             }
         } else {
             const error = await response.json();
@@ -362,11 +511,7 @@ function updateProgress(id, percent, text) {
     if (status) status.innerText = text;
     if (pct) pct.innerText = `${Math.round(percent)}%`;
 
-    // Handle protocol error highlighting
-    if (window.location.protocol === 'file:') {
-        if (status) status.innerText = "Error: Open via http://localhost:8000 to upload.";
-        if (bar) bar.style.background = "#ef4444";
-    }
+    // Protocol lock removed to allow direct file usage.
 }
 
 function getFileIcon(filename) {
@@ -380,4 +525,123 @@ function getFileIcon(filename) {
         case 'docx': return '📝';
         default: return '📁';
     }
+}
+// Knowledge Graph Logic
+let network = null;
+let allFacts = [];
+let factsCurrentPage = 1;
+const factsPageSize = 10;
+
+async function fetchGraphData() {
+    const container = document.getElementById('graph-container');
+    if (!container) return;
+
+    try {
+        const response = await fetch(`${API_BASE}/system/graph`);
+        const data = await response.json();
+
+        if (!data.nodes || data.nodes.length === 0) {
+            container.innerHTML = '<div class="empty-state">No technical relationships extracted yet. Ingest more data to see the graph.</div>';
+            return;
+        }
+
+        allFacts = data.edges || [];
+        factsCurrentPage = 1;
+
+        const visData = {
+            nodes: new vis.DataSet(data.nodes),
+            edges: new vis.DataSet(data.edges)
+        };
+
+        const options = {
+            nodes: {
+                shape: 'dot',
+                size: 20,
+                font: { size: 14, color: '#ffffff' },
+                borderWidth: 2,
+                color: {
+                    background: '#2563eb',
+                    border: '#3b82f6',
+                    highlight: { background: '#60a5fa', border: '#93c5fd' }
+                }
+            },
+            edges: {
+                width: 2,
+                color: { color: 'rgba(255, 255, 255, 0.3)', highlight: '#ffffff' },
+                font: { size: 10, color: '#94a3b8', align: 'top' },
+                arrows: { to: { enabled: true, scaleFactor: 0.5 } }
+            },
+            physics: {
+                enabled: true,
+                barnesHut: { gravitationalConstant: -2000, centralGravity: 0.3, springLength: 95 },
+                stabilization: { iterations: 100 }
+            },
+            interaction: { hover: true, tooltipDelay: 200 }
+        };
+
+        if (network) {
+            network.destroy();
+        }
+        network = new vis.Network(container, visData, options);
+
+        renderFactsPage();
+
+    } catch (err) {
+        console.error("Graph fetch error:", err);
+        container.innerHTML = '<div class="error-msg">Failed to connect to Neural Graph Engine.</div>';
+    }
+}
+
+function renderFactsPage() {
+    const factsBody = document.getElementById('facts-body');
+    const factCount = document.getElementById('fact-count');
+    const indicator = document.getElementById('page-indicator');
+    const prevBtn = document.getElementById('prev-facts-btn');
+    const nextBtn = document.getElementById('next-facts-btn');
+
+    if (!factsBody) return;
+
+    const totalPages = Math.ceil(allFacts.length / factsPageSize) || 1;
+    if (factsCurrentPage > totalPages) factsCurrentPage = totalPages;
+
+    const start = (factsCurrentPage - 1) * factsPageSize;
+    const end = start + factsPageSize;
+    const pageData = allFacts.slice(start, end);
+
+    factCount.innerText = `${allFacts.length} Facts Discovered`;
+    indicator.innerText = `Page ${factsCurrentPage} of ${totalPages}`;
+
+    factsBody.innerHTML = pageData.map(edge => `
+        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); transition: background 0.2s;">
+            <td style="padding: 12px; font-weight: 500;">${edge.from}</td>
+            <td style="padding: 12px;"><span style="background: rgba(37, 99, 235, 0.2); color: var(--primary); padding: 4px 8px; border-radius: 4px; font-size: 0.8rem;">${edge.label}</span></td>
+            <td style="padding: 12px; font-weight: 500;">${edge.to}</td>
+        </tr>
+    `).join('');
+
+    prevBtn.style.opacity = factsCurrentPage > 1 ? "1" : "0.3";
+    nextBtn.style.opacity = factsCurrentPage < totalPages ? "1" : "0.3";
+    prevBtn.disabled = factsCurrentPage === 1;
+    nextBtn.disabled = factsCurrentPage === totalPages;
+}
+
+// Pagination Listeners
+document.getElementById('prev-facts-btn')?.addEventListener('click', () => {
+    if (factsCurrentPage > 1) {
+        factsCurrentPage--;
+        renderFactsPage();
+    }
+});
+
+document.getElementById('next-facts-btn')?.addEventListener('click', () => {
+    const totalPages = Math.ceil(allFacts.length / factsPageSize);
+    if (factsCurrentPage < totalPages) {
+        factsCurrentPage++;
+        renderFactsPage();
+    }
+});
+
+const refreshGraphBtn = document.getElementById('refresh-graph-btn');
+if (refreshGraphBtn) {
+    refreshGraphBtn.addEventListener('click', fetchGraphData);
 }

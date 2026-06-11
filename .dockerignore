@@ -1,23 +1,33 @@
+# Git
+.git
+.gitignore
+
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-.env
+.pytest_cache/
+.coverage
+htmlcov/
 .venv
-env/
 venv/
 ENV/
-.pytest_cache/
+
+# Project Specific
+models_cache/
+logs/
 chroma_db/
 uploads/
 media/
-logs/
-models_cache/
 *.log
-*.bat
-*.exe
-MQueue/
-DATA/
-audit_results.txt
-test_final.log
-test_output.txt
-graph_store.pkl
+*.pid
+
+# Docker
+Dockerfile
+Dockerfile.*
+docker-compose.yml
+.dockerignore
+
+# OS
+.DS_Store
+Thumbs.db

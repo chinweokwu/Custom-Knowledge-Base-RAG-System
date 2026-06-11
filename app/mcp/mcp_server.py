@@ -114,6 +114,8 @@ async def read_resource(uri: str) -> str:
     """
     if uri == "company://reports/knowledge-gaps":
         logger.info("Generating Knowledge Gaps Report resource.")
+        if pool is None:
+            return "# Knowledge Gaps Report\n\nℹ️ PostgreSQL connection pool is decommissioned. Local SQLite or Vector search is running."
         with pool.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT query, best_score, created_at FROM knowledge_gaps ORDER BY created_at DESC LIMIT 20;")

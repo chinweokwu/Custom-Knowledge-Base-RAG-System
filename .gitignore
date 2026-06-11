@@ -20,6 +20,14 @@ graph_store.pkl
 # User Uploads & Media
 uploads/
 media/
+backups/
+
+# Database and state files
+*.db
+*.rdb
+dump.rdb
+*.lock
+.*.db.lock
 
 # Python Environment & Cache
 __pycache__/

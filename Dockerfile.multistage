@@ -1,0 +1,68 @@
+# --- STAGE 1: Builder ---
+# This stage installs compilers and builds the heavy Python wheels
+FROM python:3.11-slim AS builder
+
+# Prevent Python from writing .pyc files and enable unbuffered logging
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# Install build-only dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    curl \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements for caching
+COPY requirements.txt .
+
+# 1. Install CPU-only Torch first (to avoid massive NVIDIA download)
+RUN pip install --no-cache-dir --user torch --index-url https://download.pytorch.org/whl/cpu
+
+# 2. Install the rest of the requirements into the user's local directory
+# --user installs to /root/.local/lib/python3.11/site-packages
+RUN pip install --no-cache-dir --user --default-timeout=1000 -r requirements.txt
+
+
+# --- STAGE 2: Runtime ---
+# This is the lean, final image that will be deployed
+FROM python:3.11-slim AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    HF_HOME=/app/models_cache \
+    LOG_FILE_PATH=/app/logs/app.log \
+    CHROMA_DB_PATH=/app/chroma_db \
+    PATH="/root/.local/bin:$PATH"
+
+WORKDIR /app
+
+# Install ONLY the runtime system libraries
+# We don't need build-essential or gcc here!
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq-dev \
+    curl \
+    libmagic-dev \
+    poppler-utils \
+    libgl1 \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy the installed Python packages from the builder stage
+COPY --from=builder /root/.local /root/.local
+
+# Copy the rest of the application code
+COPY . .
+
+# Ensure all necessary directories exist with correct permissions
+RUN mkdir -p /app/models_cache /app/logs /app/chroma_db /app/uploads /app/media
+
+# Expose API and MCP ports
+EXPOSE 8000 9382
+
+# Start the application
+CMD ["uvicorn", "app.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

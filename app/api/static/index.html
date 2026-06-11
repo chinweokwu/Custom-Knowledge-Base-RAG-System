@@ -10,6 +10,7 @@
         href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Inter:wght@300;400;600&display=swap"
         rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
 </head>
 
 <body class="dark-mode">
@@ -24,6 +25,7 @@
                 <button class="tab-btn active" data-tab="upload">Ingestion</button>
                 <button class="tab-btn" data-tab="query">Neural Query</button>
                 <button class="tab-btn" data-tab="explorer">Memory Explorer</button>
+                <button class="tab-btn" data-tab="graph">Knowledge Graph</button>
                 <button class="tab-btn" data-tab="system">System Health</button>
             </nav>
             <div class="status-badge" id="system-status-summary">
@@ -32,6 +34,40 @@
         </header>
 
         <main>
+            <!-- Neural Pipeline Flow Map (Global Visualization) -->
+            <section class="pipeline-visualization">
+                <div class="flow-container" id="neural-flow-map">
+                    <div class="flow-node" id="node-api">
+                        <span class="node-icon">📡</span>
+                        <span class="node-label">External API</span>
+                    </div>
+                    <div class="flow-path api-path"><div class="pulse"></div></div>
+                    <div class="flow-node" id="node-input">
+                        <span class="node-icon">📥</span>
+                        <span class="node-label">Local Files</span>
+                    </div>
+                    <div class="flow-path"><div class="pulse"></div></div>
+                    <div class="flow-node" id="node-process">
+                        <span class="node-icon">⚙️</span>
+                        <span class="node-label">Processing</span>
+                    </div>
+                    <div class="flow-path"><div class="pulse"></div></div>
+                    <div class="flow-node" id="node-brain">
+                        <span class="node-icon">🧠</span>
+                        <span class="node-label">Neural Core</span>
+                    </div>
+                    <div class="flow-path"><div class="pulse"></div></div>
+                    <div class="flow-node" id="node-memory">
+                        <span class="node-icon">💾</span>
+                        <span class="node-label">Vector DB</span>
+                    </div>
+                    <div class="flow-path"><div class="pulse"></div></div>
+                    <div class="flow-node" id="node-output">
+                        <span class="node-icon">📤</span>
+                        <span class="node-label">Synthesis</span>
+                    </div>
+                </div>
+            </section>
             <!-- Ingestion Tab -->
             <div id="upload-tab" class="tab-content active">
                 <section class="upload-section">
@@ -52,6 +88,7 @@
                     </div>
 
                     <div class="options-bar">
+                        <button id="api-sync-btn" class="mini-btn primary">🔄 Sync with External API (T-API)</button>
                         <label class="toggle">
                             <input type="checkbox" id="heavy-parsing-toggle">
                             <span class="slider"></span>
@@ -117,6 +154,46 @@
                 </section>
             </div>
 
+            <!-- Graph Tab -->
+            <div id="graph-tab" class="tab-content">
+                <section class="graph-section">
+                    <div class="section-header">
+                        <h2>Knowledge Graph Visualization</h2>
+                        <p>Visualize the semantic relationships and technical triplets extracted from your data.</p>
+                        <button id="refresh-graph-btn" class="mini-btn">Refresh Graph</button>
+                    </div>
+                    <div id="graph-container" style="height: 600px; width: 100%; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; background: rgba(0,0,0,0.2);">
+                        <div class="empty-state">Knowledge Graph is initializing...</div>
+                    </div>
+
+                    <div class="fact-registry" style="margin-top: 30px;">
+                        <div class="section-header">
+                            <h3><i class="fas fa-list-ul"></i> Neural Fact Registry</h3>
+                            <span id="fact-count" style="font-size: 0.9rem; color: var(--primary); opacity: 0.8;">0 Facts Discovered</span>
+                        </div>
+                        <div class="table-wrapper" style="overflow-x: auto; margin-top: 15px;">
+                            <table style="width: 100%; border-collapse: collapse; background: rgba(255,255,255,0.02); border-radius: 8px;">
+                                <thead>
+                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); text-align: left;">
+                                        <th style="padding: 12px; color: var(--primary);">Subject</th>
+                                        <th style="padding: 12px; color: var(--primary);">Relationship</th>
+                                        <th style="padding: 12px; color: var(--primary);">Object</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="facts-body">
+                                    <!-- Facts will appear here -->
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="pagination-controls" style="margin-top: 15px; display: flex; justify-content: space-between; align-items: center; padding: 10px; background: rgba(255,255,255,0.01); border-radius: 4px;">
+                            <button id="prev-facts-btn" class="mini-btn" style="opacity: 0.5;">Previous</button>
+                            <span id="page-indicator" style="font-size: 0.8rem; color: var(--primary);">Page 1 of 1</span>
+                            <button id="next-facts-btn" class="mini-btn" style="opacity: 0.5;">Next</button>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
             <!-- System Tab -->
             <div id="system-tab" class="tab-content">
                 <section class="system-section">
@@ -128,7 +205,7 @@
                         <div class="health-card" data-service="database">
                             <span class="service-icon">🗄️</span>
                             <div class="service-info">
-                                <h3>ChromaDB (Local)</h3>
+                                <h3>Milvus (Vector DB)</h3>
                                 <p id="database-health">Checking...</p>
                             </div>
                             <span class="status-indicator"></span>
@@ -174,7 +251,7 @@
             <div class="mcp-sync">
                 <span class="icon">🔌</span> MCP Protocol: Active (SSE)
             </div>
-            <div class="version">v2.0.0-PRO</div>
+            <div class="version">v2.1.0-PRO (Balanced Mode)</div>
         </footer>
     </div>
 

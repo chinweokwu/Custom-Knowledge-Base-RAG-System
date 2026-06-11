@@ -1,13 +1,9 @@
 import os
-import networkx as nx
-import pickle
 from typing import List, Tuple, Dict
 from app.core.logger_config import get_logger
+from app.core.neo4j_client import neo4j_client
 
 logger = get_logger("graph_manager")
-
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-GRAPH_PATH = os.path.join(BASE_DIR, "graph_store.pkl")
 
 class GraphManager:
     _instance = None
@@ -19,81 +15,88 @@ class GraphManager:
         return cls._instance
 
     def _init(self):
-        self.graph = nx.MultiDiGraph()
-        self.last_load_time = 0
-        self.load_graph()
-
-    def load_graph(self):
-        """Loads the graph from the D: drive pickle file if it has changed."""
-        if os.path.exists(GRAPH_PATH):
-            try:
-                mtime = os.path.getmtime(GRAPH_PATH)
-                if mtime > self.last_load_time:
-                    with open(GRAPH_PATH, "rb") as f:
-                        self.graph = pickle.load(f)
-                    self.last_load_time = mtime
-                    logger.info(f"Knowledge Graph reloaded. Nodes: {self.graph.number_of_nodes()}, Edges: {self.graph.number_of_edges()}")
-            except Exception as e:
-                logger.error(f"Failed to load graph: {e}")
-                if not hasattr(self, 'graph'):
-                    self.graph = nx.MultiDiGraph()
-        else:
-            logger.info("No existing Knowledge Graph found.")
-            self.graph = nx.MultiDiGraph()
-
-    def save_graph(self):
-        """Saves the graph to the D: drive pickle file (Zero-Footprint)."""
-        try:
-            with open(GRAPH_PATH, "wb") as f:
-                pickle.dump(self.graph, f)
-            logger.info(f"Knowledge Graph saved to {GRAPH_PATH}")
-        except Exception as e:
-            logger.error(f"Failed to save graph: {e}")
+        # No internal graph object needed, Neo4j handles it
+        pass
 
     def add_relationship(self, subject: str, predicate: str, object_: str, source_metadata: dict = None):
-        """Adds a directed relationship (triplet) to the graph."""
+        """Adds a directed relationship (triplet) to Neo4j."""
         s = subject.strip().lower()
         o = object_.strip().lower()
-        p = predicate.strip().lower()
+        # Clean predicate for Neo4j relationship type (must be alphanumeric/underscore)
+        p = "".join(c if c.isalnum() else "_" for c in predicate.strip().upper())
+        if not p: p = "RELATED_TO"
         
-        self.graph.add_edge(s, o, relation=p, **(source_metadata or {}))
-        # We don't save on every edge for performance, but in this setup, we might want to for persistence
-        # In a real app, save on batch completion.
-        self.save_graph()
+        cypher = (
+            f"MERGE (s:Entity {{id: $s_id}}) "
+            f"SET s.name = $s_name "
+            f"MERGE (o:Entity {{id: $o_id}}) "
+            f"SET o.name = $o_name "
+            f"MERGE (s)-[r:{p}]->(o) "
+            f"SET r += $meta"
+        )
+        params = {
+            "s_id": s,
+            "s_name": subject.strip(),
+            "o_id": o,
+            "o_name": object_.strip(),
+            "meta": source_metadata or {}
+        }
+        try:
+            neo4j_client.execute_write(cypher, params)
+        except Exception as e:
+            logger.error(f"Failed to add Neo4j relationship: {e}")
 
     def get_related_facts(self, entity: str, depth: int = 1) -> List[str]:
-        """Traverses the graph to find neighbors and their relations."""
+        """Traverses the Neo4j graph to find neighbors and their relations."""
         search_key = entity.strip().lower()
         
-        # Find all nodes that contains or are contained in the search_key
-        # This handles 'Nebula' matching 'Project Nebula'
-        target_nodes = [n for n in self.graph.nodes if search_key in n or n in search_key]
+        # Cypher for multi-hop relationship retrieval
+        cypher = (
+            "MATCH (e:Entity) "
+            "WHERE e.id CONTAINS $key OR $key CONTAINS e.id "
+            "MATCH (e)-[r]-(neighbor) "
+            "RETURN e.name as s, type(r) as p, neighbor.name as o"
+        )
         
-        if target_nodes:
-            logger.info(f"Fuzzy Match: '{search_key}' -> {target_nodes}")
+        try:
+            records = neo4j_client.query(cypher, {"key": search_key})
+            facts = []
+            for record in records:
+                facts.append(f"{record['s']} {record['p'].lower().replace('_', ' ')} {record['o']}")
+            return list(set(facts))
+        except Exception as e:
+            logger.error(f"Neo4j query failed: {e}")
+            return []
+
+    def get_graph_data(self) -> Dict[str, List]:
+        """Returns the graph in a format suitable for Vis.js or D3.js."""
+        cypher_nodes = "MATCH (n:Entity) RETURN n.id as id, n.name as label LIMIT 500"
+        cypher_edges = "MATCH (s:Entity)-[r]->(o:Entity) RETURN s.id as from, o.id as to, type(r) as label LIMIT 1000"
         
-        facts = []
-        for node in target_nodes:
-            # Support depth 1 for now (simple neighborhood expansion)
-            neighbors = list(self.graph.neighbors(node))
-            if neighbors:
-                logger.info(f"Found {len(neighbors)} neighbors for node '{node}': {neighbors}")
+        try:
+            nodes_res = neo4j_client.query(cypher_nodes)
+            edges_res = neo4j_client.query(cypher_edges)
             
-            for neighbor in neighbors:
-                edge_data = self.graph.get_edge_data(node, neighbor)
-                for _, data in edge_data.items():
-                    rel = data.get("relation", "is related to")
-                    facts.append(f"{node} {rel} {neighbor}")
+            nodes = [{"id": r["id"], "label": r["label"]} for r in nodes_res]
+            edges = [{"from": r["from"], "to": r["to"], "label": r["label"].lower().replace('_', ' '), "arrows": "to"} for r in edges_res]
             
-            # Also look for reverse relationships
-            preds = list(self.graph.predecessors(node))
-            for pred in preds:
-                edge_data = self.graph.get_edge_data(pred, node)
-                for _, data in edge_data.items():
-                    rel = data.get("relation", "is related to")
-                    facts.append(f"{pred} {rel} {node}")
-                
-        return list(set(facts))
+            return {"nodes": nodes, "edges": edges}
+        except Exception as e:
+            logger.error(f"Failed to fetch graph data: {e}")
+            return {"nodes": [], "edges": []}
+
+    def purge_source_relations(self, source: str):
+        """Deletes all relationships and orphan nodes associated with a source."""
+        if not source:
+            return
+        cypher_rels = "MATCH ()-[r]->() WHERE r.source = $source DELETE r"
+        cypher_nodes = "MATCH (n:Entity) WHERE not (n)-[]-() DELETE n"
+        try:
+            neo4j_client.execute_write(cypher_rels, {"source": source})
+            neo4j_client.execute_write(cypher_nodes)
+            logger.info(f"🗑️ Purged old Graph relationships and orphan nodes for source: '{source}'")
+        except Exception as e:
+            logger.error(f"Failed to purge Graph data for source '{source}': {e}")
 
 # Global instance
 graph_manager = GraphManager()

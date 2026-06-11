@@ -14,6 +14,10 @@ from langchain_community.document_loaders import (
 )
 from langchain_core.documents import Document
 from app.core.logger_config import get_logger
+from app.core.ai_manager import ai_manager
+from app.core.config import settings
+import asyncio
+from docling.document_converter import DocumentConverter
 
 # Initialize Logger
 logger = get_logger("loaders")
@@ -23,94 +27,301 @@ import re
 class StructuralSplitter:
     """
     Advanced 'Logical Integrity' Splitter.
-    Uses regex to recognize and preserve TQL code blocks, hierarchical lists, and tables.
+    Treats code blocks, lists, and tables as atomic, protected entities
+    that maintain structural integrity during split operations.
     """
     def __init__(self, chunk_size=1000, chunk_overlap=200):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
-        # Patterns for blocks that MUST stay together
-        self.patterns = {
-            "tql_code": re.compile(r"var\s+\w+\s*=\s*`.*?`|select\s+.*?\s+from\s+.*?(?:\s+where\s+.*?)?", re.DOTALL | re.IGNORECASE),
-            "tech_list": re.compile(r"^(?:\d+\.|\*|\-)\s+.*?(?:\n\s+(?:\d+\.|\*|\-)\s+.*?)*", re.MULTILINE),
-            "data_table": re.compile(r"^[|\-+]{3,}.*?^[|\-+]{3,}", re.DOTALL | re.MULTILINE)
-        }
+
+    def _segment_text(self, text: str) -> List[dict]:
+        lines = text.splitlines(keepends=True)
+        segments = []
+        
+        current_type = None
+        current_lines = []
+        
+        def get_indent(line: str) -> int:
+            return len(line) - len(line.lstrip(' \t'))
+            
+        list_base_indent = 0
+        code_base_indent = 0
+        
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            stripped = line.strip()
+            
+            # 1. Inside fenced code
+            if current_type == "fenced_code":
+                current_lines.append(line)
+                if stripped.startswith("```"):
+                    segments.append({"type": "code", "content": "".join(current_lines)})
+                    current_type = None
+                    current_lines = []
+                i += 1
+                continue
+                
+            # 2. Check for start of fenced code
+            if stripped.startswith("```"):
+                if current_type:
+                    segments.append({"type": current_type, "content": "".join(current_lines)})
+                current_type = "fenced_code"
+                current_lines = [line]
+                i += 1
+                continue
+                
+            # 3. Inside table
+            if current_type == "table":
+                if (stripped.startswith("|") and stripped.endswith("|")) or (len(stripped) > 2 and stripped.count("|") >= 2):
+                    current_lines.append(line)
+                    i += 1
+                    continue
+                else:
+                    segments.append({"type": "table", "content": "".join(current_lines)})
+                    current_type = None
+                    current_lines = []
+                    continue
+                    
+            # 4. Check for table start
+            if stripped.startswith("|") and (stripped.count("|") >= 2):
+                if current_type:
+                    segments.append({"type": current_type, "content": "".join(current_lines)})
+                current_type = "table"
+                current_lines = [line]
+                i += 1
+                continue
+                
+            # 5. Inside python/JS code block (def/class)
+            if current_type == "code_block":
+                indent = get_indent(line)
+                if not stripped or indent > code_base_indent:
+                    current_lines.append(line)
+                    i += 1
+                    continue
+                else:
+                    segments.append({"type": "code", "content": "".join(current_lines)})
+                    current_type = None
+                    current_lines = []
+                    continue
+                    
+            # 6. Check for python/JS code start (def/class)
+            if stripped.startswith(("def ", "class ")):
+                if current_type:
+                    segments.append({"type": current_type, "content": "".join(current_lines)})
+                current_type = "code_block"
+                code_base_indent = get_indent(line)
+                current_lines = [line]
+                i += 1
+                continue
+                
+            # 7. Check for list item start
+            list_match = re.match(r"^[ \t]*(?:\d+\.|\*|\-|\+)\s+", line)
+            if list_match:
+                if current_type and current_type != "list":
+                    segments.append({"type": current_type, "content": "".join(current_lines)})
+                    current_type = "list"
+                    list_base_indent = get_indent(line)
+                    current_lines = [line]
+                elif not current_type:
+                    current_type = "list"
+                    list_base_indent = get_indent(line)
+                    current_lines = [line]
+                else:
+                    current_lines.append(line)
+                i += 1
+                continue
+                
+            # 8. Inside list: check if it should continue
+            if current_type == "list":
+                indent = get_indent(line)
+                if not stripped or indent > list_base_indent:
+                    current_lines.append(line)
+                    i += 1
+                    continue
+                else:
+                    segments.append({"type": "list", "content": "".join(current_lines)})
+                    current_type = None
+                    current_lines = []
+                    continue
+                    
+            # 9. Default: append to text paragraph
+            if not current_type:
+                current_type = "text"
+                current_lines = [line]
+            else:
+                current_lines.append(line)
+            i += 1
+            
+        if current_type:
+            segments.append({"type": "code" if current_type == "code_block" else current_type, "content": "".join(current_lines)})
+            
+        return segments
+    def _split_large_table(self, table_text: str, chunk_size: int) -> List[str]:
+        lines = table_text.splitlines(keepends=True)
+        if len(lines) <= 2:
+            return [table_text]
+        
+        header_lines = lines[:2]
+        header_text = "".join(header_lines)
+        data_lines = lines[2:]
+        
+        sub_tables = []
+        current_rows = []
+        
+        for row in data_lines:
+            potential_len = len(header_text) + len("".join(current_rows + [row]))
+            if current_rows and potential_len > chunk_size:
+                sub_tables.append(header_text + "".join(current_rows))
+                current_rows = [row]
+            else:
+                current_rows.append(row)
+                
+        if current_rows:
+            sub_tables.append(header_text + "".join(current_rows))
+            
+        return sub_tables
+
+    def _split_large_code(self, code_text: str, chunk_size: int) -> List[str]:
+        lines = code_text.splitlines(keepends=True)
+        if not lines:
+            return [code_text]
+            
+        first_line = lines[0]
+        last_line = lines[-1]
+        
+        is_fenced = first_line.startswith("```") and last_line.startswith("```")
+        if not is_fenced:
+            sub_blocks = []
+            current_lines = []
+            for line in lines:
+                potential_len = len("".join(current_lines + [line]))
+                if current_lines and potential_len > chunk_size:
+                    sub_blocks.append("".join(current_lines))
+                    current_lines = [line]
+                else:
+                    current_lines.append(line)
+            if current_lines:
+                sub_blocks.append("".join(current_lines))
+            return sub_blocks
+            
+        lang_tag = first_line
+        closing_tag = "```\n"
+        code_body_lines = lines[1:-1]
+        
+        sub_blocks = []
+        current_lines = []
+        
+        for line in code_body_lines:
+            potential_len = len(lang_tag) + len("".join(current_lines + [line])) + len(closing_tag)
+            if current_lines and potential_len > chunk_size:
+                sub_blocks.append(lang_tag + "".join(current_lines) + closing_tag)
+                current_lines = [line]
+            else:
+                current_lines.append(line)
+                
+        if current_lines:
+            sub_blocks.append(lang_tag + "".join(current_lines) + closing_tag)
+            
+        return sub_blocks
+
+    def _get_atomic_pieces(self, text: str, chunk_size: int, chunk_overlap: int) -> List[str]:
+        segments = self._segment_text(text)
+        atomic_pieces = []
+        
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap
+        )
+        
+        for seg in segments:
+            if seg["type"] == "text":
+                sub_chunks = text_splitter.split_text(seg["content"])
+                atomic_pieces.extend(sub_chunks)
+            else:
+                content = seg["content"]
+                if len(content) > max(chunk_size * 2, 2000):
+                    if seg["type"] == "table":
+                        sub_chunks = self._split_large_table(content, chunk_size)
+                        atomic_pieces.extend(sub_chunks)
+                    elif seg["type"] == "code":
+                        sub_chunks = self._split_large_code(content, chunk_size)
+                        atomic_pieces.extend(sub_chunks)
+                    else:
+                        fallback_splitter = RecursiveCharacterTextSplitter(
+                            chunk_size=chunk_size,
+                            chunk_overlap=chunk_overlap
+                        )
+                        sub_chunks = fallback_splitter.split_text(content)
+                        atomic_pieces.extend(sub_chunks)
+                else:
+                    atomic_pieces.append(content)
+                    
+        return atomic_pieces
+
+    def _merge_pieces(self, pieces: List[str], chunk_size: int, chunk_overlap: int) -> List[str]:
+        chunks = []
+        current_chunk = []
+        current_len = 0
+        
+        def join_pieces(parts: List[str]) -> str:
+            res = ""
+            for p in parts:
+                if not res:
+                    res = p
+                else:
+                    if res.endswith("\n") or p.startswith("\n"):
+                        res += p
+                    else:
+                        res += "\n" + p
+            return res
+            
+        for piece in pieces:
+            if not piece.strip():
+                continue
+            
+            merged_temp = join_pieces(current_chunk + [piece])
+            if current_chunk and len(merged_temp) > chunk_size:
+                chunks.append(join_pieces(current_chunk))
+                
+                # Rebuild overlap
+                overlap_content = []
+                for prev_piece in reversed(current_chunk):
+                    temp_overlap = join_pieces([prev_piece] + overlap_content)
+                    if len(temp_overlap) <= chunk_overlap:
+                        overlap_content.insert(0, prev_piece)
+                    else:
+                        break
+                current_chunk = overlap_content + [piece]
+                current_len = len(join_pieces(current_chunk))
+            else:
+                current_chunk.append(piece)
+                current_len = len(merged_temp)
+                
+        if current_chunk:
+            chunks.append(join_pieces(current_chunk))
+            
+        return chunks
 
     def split_text(self, text: str, hierarchical: bool = False) -> List[str] | List[tuple]:
-        """
-        Splits text into chunks. 
-        If hierarchical=True, returns a list of (child_chunk, parent_chunk) tuples.
-        """
-        # 1. Protect meaningful blocks by temporarily extracting them
-        protected_blocks = []
-        placeholder_template = "[[PROTECTED_BLOCK_{idx}]]"
-        
-        modified_text = text
-        for name, pattern in self.patterns.items():
-            matches = list(pattern.finditer(modified_text))
-            # Sort matches backwards to avoid offset issues
-            for match in reversed(matches):
-                block_content = match.group(0)
-                idx = len(protected_blocks)
-                placeholder = placeholder_template.format(idx=idx)
-                protected_blocks.append(block_content)
-                modified_text = modified_text[:match.start()] + placeholder + modified_text[match.end():]
-
         if hierarchical:
-            # First level: Large Parent Chunks
-            from langchain_text_splitters import RecursiveCharacterTextSplitter
-            parent_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=3000, 
-                chunk_overlap=500
-            )
-            parents = parent_splitter.split_text(modified_text)
+            parent_chunk_size = 3000
+            parent_chunk_overlap = 500
+            parent_pieces = self._get_atomic_pieces(text, parent_chunk_size, parent_chunk_overlap)
+            parents = self._merge_pieces(parent_pieces, parent_chunk_size, parent_chunk_overlap)
             
             final_hierarchy = []
-            child_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=self.chunk_size, 
-                chunk_overlap=self.chunk_overlap
-            )
-            
-            for p_idx, parent_text in enumerate(parents):
-                # Restore parent placeholders
-                restored_parent = parent_text
-                for idx, block in enumerate(protected_blocks):
-                    ph = placeholder_template.format(idx=idx)
-                    if ph in restored_parent:
-                        restored_parent = restored_parent.replace(ph, block)
-                
-                # Split parent into children
-                children = child_splitter.split_text(parent_text)
-                for child_text in children:
-                    # Restore child placeholders
-                    restored_child = child_text
-                    for idx, block in enumerate(protected_blocks):
-                        ph = placeholder_template.format(idx=idx)
-                        if ph in restored_child:
-                            restored_child = restored_child.replace(ph, block)
-                    
-                    final_hierarchy.append((restored_child, restored_parent))
-            
+            for parent in parents:
+                child_pieces = self._get_atomic_pieces(parent, self.chunk_size, self.chunk_overlap)
+                children = self._merge_pieces(child_pieces, self.chunk_size, self.chunk_overlap)
+                for child in children:
+                    final_hierarchy.append((child, parent))
             return final_hierarchy
-
-        # 2. Split the remaining text normally (by paragraph/newline)
-        from langchain_text_splitters import RecursiveCharacterTextSplitter
-        base_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=self.chunk_size, 
-            chunk_overlap=self.chunk_overlap
-        )
-        raw_chunks = base_splitter.split_text(modified_text)
-
-        # 3. Re-inject the protected blocks into the chunks
-        final_chunks = []
-        for chunk in raw_chunks:
-            restored_chunk = chunk
-            for idx, block in enumerate(protected_blocks):
-                placeholder = placeholder_template.format(idx=idx)
-                if placeholder in restored_chunk:
-                    restored_chunk = restored_chunk.replace(placeholder, block)
-            final_chunks.append(restored_chunk)
             
-        return final_chunks
+        pieces = self._get_atomic_pieces(text, self.chunk_size, self.chunk_overlap)
+        return self._merge_pieces(pieces, self.chunk_size, self.chunk_overlap)
+
 
 structural_splitter = StructuralSplitter()
 
@@ -126,63 +337,136 @@ def load_document(source: str, heavy_parsing: bool = False) -> List[Document]:
         logger.info("Detected URL source. Using WebBaseLoader.")
         loader = WebBaseLoader(source)
     
-    # 2. Handle PDF (Includes Soft Visual Discovery)
+    # 2. Handle PDF (Includes Vision & Structural Extraction)
     elif source.lower().endswith(".pdf"):
-        logger.info("Detected PDF source. Loading text and scanning for images...")
-        loader = PyPDFLoader(source)
-        raw_docs = loader.load()
-        
-        # Soft Visual Discovery: Scan and Extract images
-        import pypdf
-        reader = pypdf.PdfReader(source)
-        BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        media_dir = os.path.join(BASE_DIR, "media")
-        
-        for i, page in enumerate(reader.pages):
-            # pypdf 3.0.0+ image extraction
-            if page.images:
-                for img_idx, image in enumerate(page.images):
+        raw_docs = []
+        media_dir = settings.MEDIA_DIR
+        if not os.path.exists(media_dir):
+            os.makedirs(media_dir)
+
+        try:
+            # --- PHASE 1: Structural Extraction via Docling ---
+            logger.info("Using Docling for technical structural extraction.")
+            converter = DocumentConverter()
+            result = converter.convert(source)
+            md_content = result.document.export_to_markdown()
+            
+            raw_docs.append(Document(
+                page_content=md_content, 
+                metadata={"source": source, "parser": "docling"}
+            ))
+            
+            # --- PHASE 2: Image/Vision Extraction via PyMuPDF (Fitz) ---
+            # Docling is great for text/tables, but we use Fitz for high-speed image harvesting
+            import fitz
+            doc = fitz.open(source)
+            for i, page in enumerate(doc):
+                image_list = page.get_images(full=True)
+                for img_idx, img in enumerate(image_list):
                     try:
-                        # Create unique filename
+                        xref = img[0]
+                        base_image = doc.extract_image(xref)
+                        image_bytes = base_image["image"]
+                        
                         timestamp = int(time.time())
                         clean_name = os.path.basename(source).replace(" ", "_")
-                        img_filename = f"img_{timestamp}_{i}_{img_idx}_{clean_name}.png"
+                        img_filename = f"img_{timestamp}_{i}_{img_idx}_{clean_name}.jpg"
                         img_path = os.path.join(media_dir, img_filename)
-                        
-                        # Save image data
-                        with open(img_path, "wb") as f:
-                            f.write(image.data)
-                        
-                        logger.info(f"Extracted image to: {img_path}")
-                        
-                        # Create a "Visual Chunk" for the Vector DB
-                        visual_doc = Document(
-                            page_content=f"[VISUAL_EVIDENCE: Visual element/image extracted from {os.path.basename(source)} on Page {i+1}]",
+
+                        # Save and Compress
+                        with Image.open(io.BytesIO(image_bytes)) as pil_img:
+                            if pil_img.mode != 'RGB': pil_img = pil_img.convert('RGB')
+                            pil_img.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
+                            pil_img.save(img_path, "JPEG", quality=70, optimize=True)
+
+                        # Vision Description
+                        description = asyncio.run(ai_manager.describe_image(image_bytes))
+                        visual_vector = asyncio.run(ai_manager.get_clip_embedding(Image.open(io.BytesIO(image_bytes))))
+
+                        raw_docs.append(Document(
+                            page_content=f"[VISUAL_ANALYSIS]: {description}",
                             metadata={
-                                "source": source, 
-                                "page": i + 1, 
-                                "is_visual": True, 
-                                "media_url": f"/media/{img_filename}",
+                                "source": source, "page": i + 1, "is_visual": True, 
+                                "visual_embedding": visual_vector, "media_url": f"/media/{img_filename}",
                                 "meaning_type": "image_content"
                             }
-                        )
-                        raw_docs.append(visual_doc)
+                        ))
                     except Exception as img_err:
-                        logger.warning(f"Failed to extract image {img_idx} on page {i}: {img_err}")
-                
-                # We limit to first image per page to avoid overwhelming the DB in this phase
-                # break 
+                        logger.warning(f"Failed image extraction on page {i}: {img_err}")
+            doc.close()
+            
+        except Exception as e:
+            logger.error(f"Advanced PDF parsing failed: {e}. Falling back to basic text extraction.")
+            # Basic fallback if everything else fails
+            try:
+                import fitz
+                doc = fitz.open(source)
+                for page in doc:
+                    raw_docs.append(Document(page_content=page.get_text(), metadata={"source": source}))
+                doc.close()
+            except: pass
         
         return raw_docs
 
     # 3. Handle Word Docs (Includes Image Detection)
     elif source.lower().endswith(".docx"):
-        logger.info("Detected Word source. Using Unstructured elements to detect images.")
-        # Standard Unstructured identifies 'Image' elements without Tesseract
-        loader = UnstructuredWordDocumentLoader(
+        logger.info("Detected Word source. Using Unstructured elements with context-aware merging.")
+        base_loader = UnstructuredWordDocumentLoader(
             source, 
             mode="elements"
         )
+        class MergedWordLoader:
+            def __init__(self, raw_loader):
+                self.raw_loader = raw_loader
+            def load(self) -> List[Document]:
+                elements = self.raw_loader.load()
+                merged_docs = []
+                current_text = []
+                current_metadata = {}
+                
+                for el in elements:
+                    content = el.page_content.strip()
+                    if not content:
+                        continue
+                    
+                    category = el.metadata.get("category", "")
+                    is_special = category in ["Image", "Title", "Heading", "Table"]
+                    
+                    if is_special:
+                        # Flush accumulated paragraph text
+                        if current_text:
+                            merged_docs.append(Document(
+                                page_content="\n\n".join(current_text),
+                                metadata=dict(current_metadata)
+                            ))
+                            current_text = []
+                            current_metadata = {}
+                        # Add special structural element directly
+                        merged_docs.append(el)
+                    else:
+                        current_text.append(content)
+                        if not current_metadata:
+                            current_metadata = el.metadata
+                        else:
+                            if "page_number" in el.metadata:
+                                current_metadata["page_number"] = el.metadata["page_number"]
+                        
+                        # Merge if accumulated text hits target size (800 chars)
+                        if sum(len(t) for t in current_text) >= 800:
+                            merged_docs.append(Document(
+                                page_content="\n\n".join(current_text),
+                                metadata=dict(current_metadata)
+                            ))
+                            current_text = []
+                            current_metadata = {}
+                
+                if current_text:
+                    merged_docs.append(Document(
+                        page_content="\n\n".join(current_text),
+                        metadata=dict(current_metadata)
+                    ))
+                return merged_docs
+        loader = MergedWordLoader(base_loader)
 
     # 4. Handle CSV
     elif source.endswith(".csv"):
@@ -191,7 +475,7 @@ def load_document(source: str, heavy_parsing: bool = False) -> List[Document]:
 
     # 5. Handle Excel (Row-Aware for Structured Intelligence)
     elif source.endswith((".xlsx", ".xls")):
-        logger.info("Detected Excel source. Using Row-Aware Pandas Loader.")
+        logger.info("Detected Excel source. Using Row-Aware Pandas Loader with Dynamic Table Grouping.")
         class RowAwareLoader:
             def __init__(self, path): self.path = path
             def load(self):
@@ -199,26 +483,158 @@ def load_document(source: str, heavy_parsing: bool = False) -> List[Document]:
                 wb = load_workbook(self.path, data_only=True)
                 docs = []
                 
-                # Scan for images/charts in all sheets
+                # Scan for images/charts in all sheets and perform Vision Analysis
                 for sheet_name in wb.sheetnames:
                     ws = wb[sheet_name]
-                    image_count = len(ws._images)
-                    chart_count = len(ws._charts)
-                    if image_count > 0 or chart_count > 0:
-                        docs.append(Document(
-                            page_content=f"[SOFT_VISUAL_DISCOVERY: Sheet '{sheet_name}' contains {image_count} images and {chart_count} charts]",
-                            metadata={"source": self.path, "sheet": sheet_name, "is_visual": True}
-                        ))
-
+                    # Note: openpyxl stores images in ws._images
+                    if hasattr(ws, '_images') and ws._images:
+                        for img_idx, img in enumerate(ws._images):
+                            try:
+                                # 1. Extract raw bytes from openpyxl image
+                                from io import BytesIO
+                                img_data = img._data() # Accesses the raw image stream
+                                
+                                # 2. Save with Smart Shrinking (JPEG)
+                                timestamp = int(time.time())
+                                img_filename = f"excel_img_{timestamp}_{sheet_name}_{img_idx}.jpg"
+                                img_path = os.path.join(media_dir, img_filename)
+                                
+                                with Image.open(BytesIO(img_data)) as pil_img:
+                                    if pil_img.mode != 'RGB': pil_img = pil_img.convert('RGB')
+                                    pil_img.save(img_path, "JPEG", quality=70)
+                                
+                                # 3. Vision Analysis
+                                logger.info(f"Analyzing Excel visual on sheet '{sheet_name}'...")
+                                description = asyncio.run(ai_manager.describe_image(img_data))
+                                
+                                docs.append(Document(
+                                    page_content=f"[EXCEL_VISUAL_ANALYSIS from Sheet '{sheet_name}']: {description}",
+                                    metadata={
+                                        "source": self.path, 
+                                        "sheet": sheet_name, 
+                                        "is_visual": True,
+                                        "media_url": f"/media/{img_filename}",
+                                        "meaning_type": "spreadsheet_visual"
+                                    }
+                                ))
+                            except Exception as e:
+                                logger.warning(f"Failed to extract Excel image: {e}")
+                
                 # Load data using Polars (Rust-backed high speed)
                 df = pl.read_excel(self.path)
-                for idx, row in enumerate(df.to_dicts()):
-                    text = " | ".join([f"[{k}]: {v}" for k, v in row.items() if v is not None])
-                    docs.append(Document(page_content=text, metadata={"source": self.path, "row": idx}))
+                headers = df.columns
+                rows = df.to_dicts()
+                
+                # Dynamic Grouping based on Target Chunk Size (~1,000 characters)
+                current_batch = []
+                current_start_idx = 1
+                current_char_count = 0
+                max_chunk_chars = 1000
+                
+                def make_md_table(header_list, row_list):
+                    md = "| " + " | ".join(header_list) + " |\n"
+                    md += "| " + " | ".join(["---"] * len(header_list)) + " |\n"
+                    for r in row_list:
+                        row_vals = [str(r.get(h, "")) for h in header_list]
+                        md += "| " + " | ".join(row_vals) + " |\n"
+                    return md
+                
+                for idx, row in enumerate(rows):
+                    row_vals = [str(row.get(h, "")) for h in headers]
+                    row_char_len = len(" | ".join(row_vals)) + 4
+                    
+                    if current_batch and (current_char_count + row_char_len > max_chunk_chars):
+                        # Flush current batch
+                        md_table = make_md_table(headers, current_batch)
+                        end_idx = idx
+                        docs.append(Document(
+                            page_content=f"Excel Data Fragment from {os.path.basename(self.path)} (Rows {current_start_idx} to {end_idx}):\n\n{md_table}",
+                            metadata={"source": self.path, "rows": f"{current_start_idx}-{end_idx}", "meaning_type": "spreadsheet_data"}
+                        ))
+                        current_batch = []
+                        current_char_count = 0
+                        current_start_idx = idx + 1
+                    
+                    current_batch.append(row)
+                    current_char_count += row_char_len
+                
+                if current_batch:
+                    md_table = make_md_table(headers, current_batch)
+                    end_idx = len(rows)
+                    docs.append(Document(
+                        page_content=f"Excel Data Fragment from {os.path.basename(self.path)} (Rows {current_start_idx} to {end_idx}):\n\n{md_table}",
+                        metadata={"source": self.path, "rows": f"{current_start_idx}-{end_idx}", "meaning_type": "spreadsheet_data"}
+                    ))
                 return docs
         loader = RowAwareLoader(source)
 
-    # 6. Default to Text
+    # 6. Handle JSON (Tree-Aware Custom Chunker)
+    elif source.lower().endswith(".json"):
+        logger.info("Detected JSON source. Using JSONStructureLoader.")
+        class JSONStructureLoader:
+            def __init__(self, path: str):
+                self.path = path
+            def load(self) -> List[Document]:
+                import json
+                from typing import Any
+                with open(self.path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                
+                docs = []
+                filename = os.path.basename(self.path)
+
+                def serialize_and_create_doc(obj: Any, path_str: str) -> Document:
+                    content = json.dumps(obj, indent=2, ensure_ascii=False)
+                    return Document(
+                        page_content=f"JSON Fragment from {filename} at path '{path_str}':\n\n{content}",
+                        metadata={
+                            "source": self.path,
+                            "json_path": path_str,
+                            "meaning_type": "structured_json"
+                        }
+                    )
+
+                def traverse(obj: Any, current_path: str = "$"):
+                    if isinstance(obj, dict):
+                        serialized = json.dumps(obj, ensure_ascii=False)
+                        if len(serialized) <= 1000:
+                            docs.append(serialize_and_create_doc(obj, current_path))
+                        else:
+                            for k, v in obj.items():
+                                new_path = f"{current_path}.{k}"
+                                if isinstance(v, (dict, list)):
+                                    traverse(v, new_path)
+                                else:
+                                    docs.append(serialize_and_create_doc({k: v}, current_path))
+                    elif isinstance(obj, list):
+                        serialized = json.dumps(obj, ensure_ascii=False)
+                        if len(serialized) <= 1000:
+                            docs.append(serialize_and_create_doc(obj, current_path))
+                        else:
+                            simple_elements = []
+                            for idx, val in enumerate(obj):
+                                if isinstance(val, (dict, list)):
+                                    if simple_elements:
+                                        docs.append(serialize_and_create_doc(simple_elements, f"{current_path}[{idx-len(simple_elements)}:{idx}]"))
+                                        simple_elements = []
+                                    traverse(val, f"{current_path}[{idx}]")
+                                else:
+                                    simple_elements.append(val)
+                                    if len(json.dumps(simple_elements, ensure_ascii=False)) > 1000:
+                                        docs.append(serialize_and_create_doc(simple_elements, f"{current_path}[{idx-len(simple_elements)+1}:{idx+1}]"))
+                                        simple_elements = []
+                            if simple_elements:
+                                docs.append(serialize_and_create_doc(simple_elements, f"{current_path}[{len(obj)-len(simple_elements)}:{len(obj)}]"))
+                    else:
+                        docs.append(serialize_and_create_doc(obj, current_path))
+
+                traverse(data)
+                if not docs:
+                    docs.append(serialize_and_create_doc(data, "$"))
+                return docs
+        loader = JSONStructureLoader(source)
+
+    # 7. Default to Text
     else:
         if not os.path.exists(source):
              logger.error(f"File not found: {source}")

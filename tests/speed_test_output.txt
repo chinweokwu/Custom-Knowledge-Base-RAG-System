@@ -1,0 +1,79 @@
+2026-04-27 16:38:46,460 - ai_manager - INFO - ai_manager.py:50 - Groq Cloud APIs Initialized (Reasoning: llama-3.3-70b-versatile | Ingestion: llama-3.1-8b-instant)
+2026-04-27 16:38:46,461 - ai_manager - INFO - ai_manager.py:68 - Initializing Local Neural Fusion Ensemble (5x Models + CLIP)...
+2026-04-27 16:38:46,461 - ai_manager - INFO - ai_manager.py:76 - Loading Ensemble Layer: all-MiniLM-L6-v2...
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Loading weights:   0%|          | 0/103 [00:00<?, ?it/s]Loading weights: 100%|██████████| 103/103 [00:00<00:00, 2170.33it/s]
+[1mBertModel LOAD REPORT[0m from: sentence-transformers/all-MiniLM-L6-v2
+Key                     | Status     |  | 
+------------------------+------------+--+-
+embeddings.position_ids | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+2026-04-27 16:38:51,999 - ai_manager - INFO - ai_manager.py:76 - Loading Ensemble Layer: paraphrase-MiniLM-L6-v2...
+Loading weights:   0%|          | 0/103 [00:00<?, ?it/s]Loading weights: 100%|██████████| 103/103 [00:00<00:00, 1922.37it/s]
+[1mBertModel LOAD REPORT[0m from: sentence-transformers/paraphrase-MiniLM-L6-v2
+Key                     | Status     |  | 
+------------------------+------------+--+-
+embeddings.position_ids | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+2026-04-27 16:39:45,797 - ai_manager - INFO - ai_manager.py:76 - Loading Ensemble Layer: multi-qa-MiniLM-L6-cos-v1...
+{"timestamp":"2026-04-27T15:39:54.404254Z","level":"ERROR","fields":{"message":"Error logging to file \"/home/morah-paul/Downloads/AI knowledge Based Version/AI knowledge Based Version/models_cache/xet/logs/xet_20260427T163954404+0100_32051.log\" (Permission denied (os error 13)); falling back to console logging."},"filename":"/home/runner/work/xet-core/xet-core/xet_runtime/src/logging/init.rs","line_number":58}
+{"timestamp":"2026-04-27T15:39:55.848816Z","level":"ERROR","fields":{"message":"Fatal Error: \"cas::get_reconstruction\" api call failed (request id 01KQ7SHQYZPRVDX1WR8Y5EZY4Y): HTTP status client error (416 Range Not Satisfiable) for url (https://cas-server.xethub.hf.co/v1/reconstructions/6857a545dd8b0c50ddd65ac56350711fa06ea51acf5db252ba775a80b67fffa5)"},"filename":"/home/runner/work/xet-core/xet-core/xet_client/src/cas_client/retry_wrapper.rs","line_number":141}
+{"timestamp":"2026-04-27T15:39:55.882095Z","level":"ERROR","fields":{"message":"Fatal Error: \"cas::get_reconstruction\" api call failed (request id 01KQ7SHQZTSPBB2BGJGVND7BE7): HTTP status client error (416 Range Not Satisfiable) for url (https://cas-server.xethub.hf.co/v1/reconstructions/6857a545dd8b0c50ddd65ac56350711fa06ea51acf5db252ba775a80b67fffa5)"},"filename":"/home/runner/work/xet-core/xet-core/xet_client/src/cas_client/retry_wrapper.rs","line_number":141}
+Loading weights:   0%|          | 0/103 [00:00<?, ?it/s]Loading weights: 100%|██████████| 103/103 [00:00<00:00, 3025.71it/s]
+[1mBertModel LOAD REPORT[0m from: sentence-transformers/multi-qa-MiniLM-L6-cos-v1
+Key                     | Status     |  | 
+------------------------+------------+--+-
+embeddings.position_ids | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+2026-04-27 16:41:06,882 - ai_manager - INFO - ai_manager.py:76 - Loading Ensemble Layer: all-MiniLM-L12-v2...
+Loading weights:   0%|          | 0/199 [00:00<?, ?it/s]Loading weights: 100%|██████████| 199/199 [00:00<00:00, 2419.60it/s]
+[1mBertModel LOAD REPORT[0m from: sentence-transformers/all-MiniLM-L12-v2
+Key                     | Status     |  | 
+------------------------+------------+--+-
+embeddings.position_ids | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+2026-04-27 16:42:50,234 - ai_manager - INFO - ai_manager.py:76 - Loading Ensemble Layer: msmarco-MiniLM-L6-cos-v5...
+Loading weights:   0%|          | 0/103 [00:00<?, ?it/s]Loading weights: 100%|██████████| 103/103 [00:00<00:00, 3198.46it/s]
+[1mBertModel LOAD REPORT[0m from: sentence-transformers/msmarco-MiniLM-L6-cos-v5
+Key                     | Status     |  | 
+------------------------+------------+--+-
+embeddings.position_ids | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+2026-04-27 16:44:06,699 - ai_manager - INFO - ai_manager.py:79 - Loading Multi-Modal Layer: CLIP...
+Loading weights:   0%|          | 0/398 [00:00<?, ?it/s]Loading weights:  36%|███▌      | 144/398 [00:00<00:00, 1430.92it/s]Loading weights:  72%|███████▏  | 288/398 [00:00<00:00, 1333.37it/s]Loading weights: 100%|██████████| 398/398 [00:00<00:00, 1435.02it/s]
+[1mCLIPModel LOAD REPORT[0m from: /home/morah-paul/.cache/huggingface/hub/models--sentence-transformers--clip-ViT-B-32/snapshots/327ab6726d33c0e22f920c83f2ff9e4bd38ca37f/0_CLIPModel
+Key                                  | Status     |  | 
+-------------------------------------+------------+--+-
+vision_model.embeddings.position_ids | UNEXPECTED |  | 
+text_model.embeddings.position_ids   | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+/home/morah-paul/Downloads/AI knowledge Based Version/AI knowledge Based Version/venv/lib/python3.12/site-packages/milvus_lite/__init__.py:15: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  from pkg_resources import DistributionNotFound, get_distribution
+Start milvus-lite failed
+2026-04-27 16:54:40,009 - milvus_client - ERROR - milvus_client.py:23 - ❌ Failed to connect to Milvus: <ConnectionConfigException: (code=1, message=Open local milvus failed)>
+Traceback (most recent call last):
+  File "/home/morah-paul/Downloads/AI knowledge Based Version/AI knowledge Based Version/tests/speed_test.py", line 3, in <module>
+    from app.services.retrieval import get_hybrid_context
+  File "/home/morah-paul/Downloads/AI knowledge Based Version/AI knowledge Based Version/app/services/retrieval.py", line 11, in <module>
+    from app.core.milvus_client import milvus_client, init_milvus_collection, COLLECTION_NAME, VISUAL_COLLECTION_NAME
+  File "/home/morah-paul/Downloads/AI knowledge Based Version/AI knowledge Based Version/app/core/milvus_client.py", line 20, in <module>
+    milvus_client = MilvusClient(uri=APP_MILVUS_URI)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/morah-paul/Downloads/AI knowledge Based Version/AI knowledge Based Version/venv/lib/python3.12/site-packages/pymilvus/milvus_client/milvus_client.py", line 81, in __init__
+    self._config = ConnectionConfig.from_uri(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/morah-paul/Downloads/AI knowledge Based Version/AI knowledge Based Version/venv/lib/python3.12/site-packages/pymilvus/client/connection_manager.py", line 112, in from_uri
+    raise ConnectionConfigException(message="Open local milvus failed")
+pymilvus.exceptions.ConnectionConfigException: <ConnectionConfigException: (code=1, message=Open local milvus failed)>

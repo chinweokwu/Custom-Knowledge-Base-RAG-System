@@ -1,0 +1,17 @@
+{
+  "name": "tech-brain-bridge",
+  "version": "1.0.0",
+  "description": "Bridges the Enterprise Neural Fusion RAG system as a knowledge source for OpenClaw.",
+  "main": "index.js",
+  "keywords": [
+    "openclaw",
+    "rag",
+    "knowledge-base",
+    "ai-agent"
+  ],
+  "author": "Enterprise RAG",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.0"
+  }
+}
