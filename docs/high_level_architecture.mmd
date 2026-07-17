@@ -1,0 +1,28 @@
+graph TD
+    %% Write Ingestion Flow
+    subgraph Ingestion [Ingestion & Write Flow]
+        Doc[Document/URL Input] --> Loader[Docling / PyMuPDF Parser]
+        Loader --> Splitter[Structural Parent/Child Splitter]
+        Splitter --> |Child Chunks| Vectorize[5-Model Ensemble dense/sparse]
+        Splitter --> |Entities| GraphExtract[Groq Llama Triplet Extraction]
+        Vectorize --> |3,712-D + 32K Sparse| Milvus[(Milvus Lite)]
+        GraphExtract --> |Subject-Relation-Object| Neo4j[(Neo4j Graph)]
+    end
+
+    %% Read Retrieval Flow
+    subgraph Retrieval [Retrieval & Read Flow]
+        Query[User Query] --> Expand[Llama 70B Query Expansion & HyDE]
+        Expand --> |Dense & Sparse Vector| SearchMilvus[Parallel Milvus Search]
+        Expand --> |Entities & Codes| SearchGraph[Neo4j Fact Retrieval]
+        SearchMilvus --> RRF[Rank Fusion & X-Algo Boosters]
+        SearchGraph --> RRF
+        RRF --> Context[Context Aggregator & Parent Expand]
+        Context --> Agentic{Agentic Loop Sufficient?}
+        Agentic -->|No: Re-Query| Expand
+        Agentic -->|Yes| synthesis[Llama Synthesis & Graph Truth Guard]
+        synthesis --> Answer[Verified Final Report]
+    end
+
+    Milvus -.-> SearchMilvus
+    Neo4j -.-> SearchGraph
+    synthesis -.-> |Audit check| Neo4j

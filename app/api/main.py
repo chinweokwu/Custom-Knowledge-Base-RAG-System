@@ -95,6 +95,7 @@ class ChatRequest(BaseModel):
     message: str
     limit: int = 20
     metadata_filter: Dict[str, Any] = {}
+    session_id: str = None
 
 class FeedbackRequest(BaseModel):
     doc_id: str
@@ -195,7 +196,19 @@ async def ingest_file(request: FileIngestRequest):
 @app.post("/chat")
 async def chat_with_memory(request: ChatRequest):
     try:
-        return await perform_agentic_search(request.message, request.limit)
+        conversation_history = []
+        if request.session_id:
+            from app.services.session_memory import session_memory
+            conversation_history = session_memory.get_history(request.session_id)
+            
+        result = await perform_agentic_search(request.message, request.limit, conversation_history)
+        
+        if request.session_id and result.get("answer"):
+            from app.services.session_memory import session_memory
+            session_memory.add_message(request.session_id, "user", request.message)
+            session_memory.add_message(request.session_id, "assistant", result["answer"])
+            
+        return result
     except Exception as e:
         logger.exception(f"Error in chat_with_memory: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -227,9 +240,21 @@ async def provide_feedback(request: FeedbackRequest):
         return {"status": "error", "detail": str(e)}
 
 @app.get("/search")
-async def dashboard_search(query: str, limit: int = 20):
+async def dashboard_search(query: str, limit: int = 20, session_id: str = None):
     try:
-        return await synthesize_dashboard_report(query, limit)
+        conversation_history = []
+        if session_id:
+            from app.services.session_memory import session_memory
+            conversation_history = session_memory.get_history(session_id)
+            
+        result = await synthesize_dashboard_report(query, limit, conversation_history)
+        
+        if session_id and result.get("answer"):
+            from app.services.session_memory import session_memory
+            session_memory.add_message(session_id, "user", query)
+            session_memory.add_message(session_id, "assistant", result["answer"])
+            
+        return result
     except Exception as e:
         logger.exception(f"Dashboard search failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))

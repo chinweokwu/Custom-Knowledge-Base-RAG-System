@@ -177,4 +177,27 @@ def test_json_loader(tmp_path):
     assert has_item_element
 
 
+def test_event_loop_safety(tmp_path):
+    import asyncio
+    from app.services.loaders import load_document
+    
+    # Create a small dummy text file
+    dummy_file = tmp_path / "dummy.txt"
+    dummy_file.write_text("Hello event loop safety!")
+    
+    # Define an async function that runs the sync loader.
+    # This simulates a running event loop (e.g. FastAPI request thread).
+    async def simulate_fastapi_request():
+        # Inside this running async function, we call the sync wrapper.
+        # It must NOT throw "RuntimeError: This event loop is already running".
+        docs = load_document(str(dummy_file))
+        return docs
+    
+    # Run the simulated FastAPI request using asyncio.run
+    docs = asyncio.run(simulate_fastapi_request())
+    assert len(docs) == 1
+    assert "Hello event loop safety!" in docs[0].page_content
+
+
+
 

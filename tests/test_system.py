@@ -62,7 +62,7 @@ def test_chat_endpoint(mock_search):
     assert res_data["answer"] == "Stated fact from knowledge base."
     assert res_data["confidence"] == "HIGH"
     
-    mock_search.assert_called_once_with("What is the network setup?", 10)
+    mock_search.assert_called_once_with("What is the network setup?", 10, [])
 
 @patch("app.api.main.synthesize_dashboard_report")
 def test_search_endpoint(mock_report):
@@ -72,7 +72,7 @@ def test_search_endpoint(mock_report):
         "context": [{"content": "Source alarm docs"}],
         "answer": "Guide details.",
         "confidence": "MEDIUM"
-    }
+      }
     
     response = client.get("/search", params={"query": "alarm guide", "limit": 5})
     
@@ -81,7 +81,7 @@ def test_search_endpoint(mock_report):
     assert res_data["query"] == "alarm guide"
     assert res_data["answer"] == "Guide details."
     
-    mock_report.assert_called_once_with("alarm guide", 5)
+    mock_report.assert_called_once_with("alarm guide", 5, [])
 
 if __name__ == "__main__":
     pytest.main([__file__])

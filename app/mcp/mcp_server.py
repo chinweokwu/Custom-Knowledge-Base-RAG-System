@@ -189,7 +189,7 @@ async def record_action_trace(action_name: str, parameters: dict, result: Any, s
         }
         
         # Split and Send to Celery
-        chunks = text_splitter.split_text(trace_content)
+        chunks = structural_splitter.split_text(trace_content)
         process_and_store_batch.delay(chunks, metadata)
         logger.info(f"Action trace for {action_name} queued for vector DB storage.")
     except Exception as e:

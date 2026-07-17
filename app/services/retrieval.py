@@ -116,7 +116,7 @@ async def get_hybrid_context(query_text: str, limit: int) -> List[Dict[str, Any]
                 milvus_client.hybrid_search,
                 collection_name=COLLECTION_NAME,
                 reqs=[req_dense, req_sparse],
-                ranker=RRFRanker(K=settings.RRF_K),
+                ranker=RRFRanker(k=settings.RRF_K),
                 limit=50,
                 output_fields=["content", "created_at", "synthetic_questions", "parent_content", "authority"]
             )
@@ -485,7 +485,7 @@ async def memory_streamer(query_text: str, limit: int):
         logger.exception(f"Error in memory_streamer: {e}")
         yield json.dumps({"error": str(e)}) + "\n"
 
-async def perform_agentic_search(message: str, limit: int) -> Dict[str, Any]:
+async def perform_agentic_search(message: str, limit: int, conversation_history: list = None) -> Dict[str, Any]:
     """
     Phase 17: Agentic Reasoning (The Researcher)
     Implements a self-correcting retrieval loop that performs follow-up research
@@ -571,7 +571,8 @@ async def perform_agentic_search(message: str, limit: int) -> Dict[str, Any]:
         answer = await ai_manager.call_llm(None, {
             "context": context_text,
             "question": message,
-            "confidence": confidence
+            "confidence": confidence,
+            "conversation_history": conversation_history or []
         })
     except Exception as e:
         logger.error(f"Synthesis failed: {e}")
